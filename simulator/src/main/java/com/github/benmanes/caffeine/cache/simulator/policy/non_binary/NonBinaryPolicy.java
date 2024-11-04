@@ -8,15 +8,18 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.Stack;
+import java.util.Comparator;
 import java.util.Random;
+import java.util.Stack;
 
 @Policy.PolicySpec(name = "NonBinary")
 public final class NonBinaryPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final long maximumSize; // in chunks
   long currentSize; // in chunks
+  long currentRequest;
 
   final long BANDWIDTH = 1250; // in MBps
   static final double MEAN = 0.2; // average delay in seconds (e.g., 200 ms)
@@ -29,11 +32,14 @@ public final class NonBinaryPolicy implements Policy {
     this.data = new Long2ObjectOpenHashMap<>();
     this.maximumSize = settings.maximumSize();
     this.currentSize = 0;
+    this.currentRequest = 0;
     this.random = new Random();
   }
 
   @Override
   public void record(AccessEvent event) {
+    currentRequest++;
+
     long itemKey = event.key();
     Prefix old = data.get(itemKey);
     if (old != null) {
@@ -41,10 +47,12 @@ public final class NonBinaryPolicy implements Policy {
     } else {
       // TODO: stat and document full miss
     }
-
-    Prefix currentPrefix = old == null ? new Prefix(itemKey) : old;
+    Prefix currentPrefix = old == null ? new Prefix(itemKey, currentRequest) : old;
     long idealSize = (long) (BANDWIDTH * sampleSourceProcessingTime()) + 1;
     insertChunks(currentPrefix, idealSize);
+    if (currentPrefix.size() > 0) {
+      data.put(itemKey, currentPrefix);
+    }
   }
 
   private double sampleSourceProcessingTime() {
@@ -52,20 +60,45 @@ public final class NonBinaryPolicy implements Policy {
   }
 
   private void insertChunks(Prefix prefix, long idealSize) {
-    // TODO:  try to insert more chunks until we reach ideal prefix size,
-    //    or we stop due to not benefiting from it
+    // try to insert more chunks until we reach ideal prefix size,
+    //  or we stop due to not benefiting from it
 
     while (true) {
       if (prefix.size() == idealSize) {
-        return;
+        break;
       }
 
       ArrayList<Chunk> endChunks = getAllEndChunks();
-      // TODO: find smallest benefit chunk and compare to new one we want to add,
-      //  insert only if the benefit of inserting is bigger or equal than the benefit of removing,
-      //  otherwise break from loop.
+      Chunk newChunk = new Chunk(prefix.itemKey, currentRequest);
+      Chunk victim = findVictim(newChunk, endChunks);
+      if (victim == null) {
+        break;
+      }
 
+      Prefix victimPrefix = data.get(victim.itemKey);
+      victimPrefix.chunks.pop();
+      if (victimPrefix.size() == 0) {
+        data.remove(victimPrefix.itemKey);
+      }
     }
+  }
+
+  @Nullable
+  private Chunk findVictim(Chunk newChunk, ArrayList<Chunk> victimCandidates) {
+    ArrayList<Chunk> possibleVictims = new ArrayList<>();
+    for (Chunk candidate : victimCandidates) {
+      if (benefit(newChunk) >= benefit(candidate)) {
+        possibleVictims.add(candidate);
+      }
+    }
+    return possibleVictims.stream()
+      .min(Comparator.comparingDouble(Chunk::frequency))
+      .orElse(null);
+  }
+
+  private double benefit(Chunk chunk) {
+    double possibilityForRequest = Math.exp(chunk.requestIndex - currentRequest);
+    return possibilityForRequest * chunk.frequency;
   }
 
   private ArrayList<Chunk> getAllEndChunks() {
@@ -91,15 +124,21 @@ public final class NonBinaryPolicy implements Policy {
     return Policy.super.name();
   }
 
-  record Chunk(int requestIndex) {
+  record Chunk(long itemKey, long requestIndex, long frequency) {
+
+    public Chunk(long itemKey, long requestIndex) {
+      this(itemKey, requestIndex, 1);
+    }
   }
 
   static class Prefix {
-    final long itemKey;
+    final long itemKey, requestIndex, frequency;
     Stack<Chunk> chunks;
 
-    public Prefix(long itemKey) {
+    public Prefix(long itemKey, long requestIndex) {
       this.itemKey = itemKey;
+      this.requestIndex = requestIndex;
+      this.frequency = 1;
       this.chunks = new Stack<>();
     }
 
