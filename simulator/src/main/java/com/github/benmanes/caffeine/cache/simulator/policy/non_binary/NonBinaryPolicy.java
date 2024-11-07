@@ -15,7 +15,7 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Stack;
 
-@Policy.PolicySpec(name = "NonBinary")
+@Policy.PolicySpec(name = "non-binary.NonBinary")
 public final class NonBinaryPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final long maximumSize; // in chunks
@@ -133,7 +133,7 @@ public final class NonBinaryPolicy implements Policy {
     }
 
     policyStats.recordOperation();
-    Chunk victim = possibleVictims.getFirst();
+    Chunk victim = possibleVictims.get(0);
     for (Chunk candidate : possibleVictims) {
       if (evictionBenefit(candidate, sourceDelay) < evictionBenefit(victim, sourceDelay)) {
         victim = candidate;
@@ -164,7 +164,7 @@ public final class NonBinaryPolicy implements Policy {
     return possibleVictims;
   }
 
-  private double calculateDelay(double sourceDelay, long prefixSize, long bandwidth) {
+  private static double calculateDelay(double sourceDelay, long prefixSize, long bandwidth) {
     if (prefixSize < 0) {
       throw new InvalidParameterException("Prefix size must be non-negative!");
     }
@@ -209,7 +209,12 @@ public final class NonBinaryPolicy implements Policy {
     return Policy.super.name();
   }
 
-  record Chunk(Prefix fatherPrefix) {
+  static class Chunk {
+    final Prefix fatherPrefix;
+
+    public Chunk(Prefix fatherPrefix) {
+      this.fatherPrefix = fatherPrefix;
+    }
   }
 
   static class Prefix {

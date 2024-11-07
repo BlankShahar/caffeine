@@ -51,6 +51,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.linked.MultiQueuePoli
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.S4LruPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.SegmentedLruPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.SievePolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.NonBinaryPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.UnboundedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.Cache2kPolicy;
@@ -120,6 +121,7 @@ public final class Registry {
     registerTwoQueue();
     registerAdaptive();
     registerGreedyDual();
+    registerNonBinary();
   }
 
   /** Registers the policy based on the annotated name. */
@@ -233,6 +235,10 @@ public final class Registry {
     registerMany(CoherencePolicy.class, CoherencePolicy::policies);
     registerMany(HazelcastPolicy.class, HazelcastPolicy::policies);
     registerMany(ExpiringMapPolicy.class, ExpiringMapPolicy::policies);
+  }
+
+  private void registerNonBinary() {
+    register(NonBinaryPolicy.class, NonBinaryPolicy::new);
   }
 
   @AutoValue
