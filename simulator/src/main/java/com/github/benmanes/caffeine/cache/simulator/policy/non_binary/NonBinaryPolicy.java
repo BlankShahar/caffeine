@@ -23,7 +23,8 @@ public final class NonBinaryPolicy implements Policy {
 
   final PolicyStats policyStats;
 
-  final long BANDWIDTH = 1250; // in MBps
+  static final long AVG_ITEM_SIZE = 1024; // in chunks
+  static final long BANDWIDTH = 1250; // in MBps
   static final double MEAN = 0.2; // average delay in seconds (e.g., 200 ms)
   static final double STANDARD_DEVIATION = 0.05; // standard deviation in seconds (e.g., 50 ms)
 
@@ -34,7 +35,12 @@ public final class NonBinaryPolicy implements Policy {
     this.policyStats = new PolicyStats("Non-Binary");
 
     this.data = new Long2ObjectOpenHashMap<>();
-    this.maximumSize = settings.maximumSize();
+
+    // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
+    // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
+    //  which we assume is ~1024 chunks per item.
+    // If we assume that a chunk size is 1KB, then an average item size is 1MB.
+    this.maximumSize = settings.maximumSize() * AVG_ITEM_SIZE;
     this.currentSize = 0;
 
     this.random = new Random(1337);
@@ -47,6 +53,8 @@ public final class NonBinaryPolicy implements Policy {
     policyStats.recordOperation();
 
     Prefix currentPrefix = existing.orElseGet(() -> new Prefix(itemKey));
+    currentPrefix.frequency++; // TODO: add time interval/period/window logic
+
     double sourceDelay = sampleSourceProcessingTime();
     // The ideal prefix size - the number of chunks that give the "no delay" illusion
     long idealSize = (long) (calculateDelay(sourceDelay, currentPrefix.size(), BANDWIDTH) * BANDWIDTH);
@@ -218,12 +226,13 @@ public final class NonBinaryPolicy implements Policy {
   }
 
   static class Prefix {
-    final long itemKey, frequency;
+    final long itemKey;
+    long frequency;
     Stack<Chunk> chunks;
 
     public Prefix(long itemKey) {
       this.itemKey = itemKey;
-      this.frequency = 1;
+      this.frequency = 0;
       this.chunks = new Stack<>();
     }
 
