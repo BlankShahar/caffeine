@@ -135,11 +135,11 @@ public final class NonBinaryPolicy implements Policy {
     ArrayList<Chunk> victimCandidates = getAllEndChunks();
     double sourceDelay = sampleSourceProcessingTime();
     ArrayList<Chunk> suitableVictims = findSuitableVictims(newChunk, victimCandidates, sourceDelay);
-    return getLowestEvictionBenefitChunk(suitableVictims, sourceDelay);
+    return getLowestEvictionCostChunk(suitableVictims, sourceDelay);
   }
 
   @Nullable
-  private Chunk getLowestEvictionBenefitChunk(ArrayList<Chunk> possibleVictims, double sourceDelay) {
+  private Chunk getLowestEvictionCostChunk(ArrayList<Chunk> possibleVictims, double sourceDelay) {
     if (possibleVictims.isEmpty()) {
       return null;
     }

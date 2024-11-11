@@ -15,13 +15,13 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy;
 
-import com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic;
-import com.google.auto.value.AutoValue;
-import com.google.auto.value.AutoValue.CopyAnnotations;
-import com.google.common.base.Stopwatch;
-import com.google.common.collect.ImmutableSet;
-import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import org.apache.commons.lang3.builder.ToStringBuilder;
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
+import static com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats.Metric.MetricType.NUMBER;
+import static com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats.Metric.MetricType.OBJECT;
+import static com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats.Metric.MetricType.PERCENT;
+import static java.util.Locale.US;
+import static java.util.Objects.requireNonNull;
+import static org.apache.commons.lang3.builder.ToStringStyle.MULTI_LINE_STYLE;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -29,11 +29,13 @@ import java.util.function.DoubleSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
-import static com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats.Metric.MetricType.*;
-import static java.util.Locale.US;
-import static java.util.Objects.requireNonNull;
-import static org.apache.commons.lang3.builder.ToStringStyle.MULTI_LINE_STYLE;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic;
+import com.google.auto.value.AutoValue;
+import com.google.auto.value.AutoValue.CopyAnnotations;
+import com.google.common.base.Stopwatch;
+import com.google.common.collect.ImmutableSet;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 /**
  * Statistics gathered by a policy execution. A policy can extend this class as a convenient way to
@@ -102,6 +104,14 @@ public class PolicyStats {
     addMetric("Total Delay", this::totalDelay);
     addMetric("Total Latency", this::totalLatency);
   }
+
+  public Map<String, Metric> metrics() {
+    return metrics;
+  }
+  public Stopwatch stopwatch() {
+    return stopwatch;
+  }
+
 
   public void addMetric(Metric.Builder metricBuilder) {
     var metric = metricBuilder.build();
@@ -303,10 +313,6 @@ public class PolicyStats {
 
   public double totalLatency() {
     return totalLatency;
-  }
-
-  public Stopwatch stopwatch() {
-    return stopwatch;
   }
 
   @Override
