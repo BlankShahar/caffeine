@@ -58,7 +58,7 @@ public final class NonBinaryPolicy implements Policy {
     double sourceDelay = sampleSourceProcessingTime();
     // The ideal prefix size - the number of chunks that give the "no delay" illusion
     long idealSize = (long) (calculateDelay(sourceDelay, currentPrefix.size(), BANDWIDTH) * BANDWIDTH);
-    recordPartialHitStats(currentPrefix, idealSize);
+    recordRequestStatistics(currentPrefix, idealSize, sourceDelay);
 
     insertChunks(currentPrefix, idealSize);
     if (currentPrefix.size() > 0) {
@@ -67,12 +67,16 @@ public final class NonBinaryPolicy implements Policy {
     }
   }
 
-  private void recordPartialHitStats(Prefix old, long idealSize) {
+  private void recordRequestStatistics(Prefix old, long idealSize, double sourceDelay) {
+    // Chunk Hit Rate
     policyStats.addHits(old.size());
-    if (old.size() < idealSize) {
-      // underflow case
+    if (old.size() < idealSize) { // underflow case
       policyStats.addMisses(idealSize - old.size());
     }
+
+    // Total Delay and Latency
+    policyStats.addDelay(calculateDelay(sourceDelay, old.size(), BANDWIDTH));
+    policyStats.addLatency(calculateLatency(sourceDelay, AVG_ITEM_SIZE, old.size(), BANDWIDTH));
   }
 
   private double sampleSourceProcessingTime() {
@@ -143,7 +147,7 @@ public final class NonBinaryPolicy implements Policy {
     policyStats.recordOperation();
     Chunk victim = possibleVictims.get(0);
     for (Chunk candidate : possibleVictims) {
-      if (evictionBenefit(candidate, sourceDelay) < evictionBenefit(victim, sourceDelay)) {
+      if (evictionCost(candidate, sourceDelay) < evictionCost(victim, sourceDelay)) {
         victim = candidate;
       }
     }
@@ -165,7 +169,7 @@ public final class NonBinaryPolicy implements Policy {
     policyStats.recordOperation();
     ArrayList<Chunk> possibleVictims = new ArrayList<>();
     for (Chunk candidate : victimCandidates) {
-      if (insertionBenefit(newChunk, sourceDelay) >= evictionBenefit(candidate, sourceDelay)) {
+      if (insertionBenefit(newChunk, sourceDelay) >= evictionCost(candidate, sourceDelay)) {
         possibleVictims.add(candidate);
       }
     }
@@ -179,18 +183,37 @@ public final class NonBinaryPolicy implements Policy {
     return sourceDelay - (double) prefixSize / bandwidth;
   }
 
+  private double calculateLatency(double sourceDelay, long itemSize, long prefixSize, long bandwidth) {
+    double prefixLatency = (double) prefixSize / bandwidth;
+    double delay = calculateDelay(sourceDelay, prefixSize, bandwidth);
+    double restLatency = (double) 2 * (itemSize - prefixSize) / bandwidth; // source->cache->client
+    if (delay < 0) {
+      // overflow case
+      return prefixLatency + restLatency;
+    }
+    return prefixLatency + delay + restLatency;
+  }
+
   private double insertionBenefit(Chunk chunk, double sourceDelay) {
     // calculate the benefit of inserting a new chunk to its prefix
     // D_i[r] = T[s] - (|P_i[r]| + 1) / B
-    double newDelay = calculateDelay(sourceDelay, chunk.fatherPrefix.size() + 1, BANDWIDTH);
-    return 1 / Math.pow(newDelay, 2) * chunk.fatherPrefix.frequency;
+    // Benefit = F_i * (D_i[r+1] - D_i[r])
+    double currentDelay = calculateDelay(sourceDelay, chunk.fatherPrefix.size(), BANDWIDTH);
+    double newSampleSourceDelay = sampleSourceProcessingTime();
+    double newDelay = calculateDelay(newSampleSourceDelay, chunk.fatherPrefix.size() + 1, BANDWIDTH);
+    double deltaDelay = newDelay - currentDelay;
+    return chunk.fatherPrefix.frequency * deltaDelay;
   }
 
-  private double evictionBenefit(Chunk chunk, double sourceDelay) {
-    // calculate the benefit of evicting the last chunk from its prefix
-    // D_i[r] = T[s] - (|P_i[r]| - 1) / B
-    double newDelay = calculateDelay(sourceDelay, chunk.fatherPrefix.size() - 1, BANDWIDTH);
-    return 1 / Math.pow(newDelay, 2) * chunk.fatherPrefix.frequency;
+  private double evictionCost(Chunk chunk, double sourceDelay) {
+    // calculate the cost of inserting a new chunk to its prefix
+    // D_i[r] = T[s] - (|P_i[r]| + 1) / B
+    // Cost = F_i * (D_i[r] - D_i[r+1])
+    double currentDelay = calculateDelay(sourceDelay, chunk.fatherPrefix.size(), BANDWIDTH);
+    double newSampleSourceDelay = sampleSourceProcessingTime();
+    double newDelay = calculateDelay(newSampleSourceDelay, chunk.fatherPrefix.size() + 1, BANDWIDTH);
+    double deltaDelay = currentDelay- newDelay;
+    return chunk.fatherPrefix.frequency * deltaDelay;
   }
 
   private ArrayList<Chunk> getAllEndChunks() {
