@@ -108,6 +108,7 @@ public class PolicyStats {
   public Map<String, Metric> metrics() {
     return metrics;
   }
+
   public Stopwatch stopwatch() {
     return stopwatch;
   }
@@ -250,6 +251,10 @@ public class PolicyStats {
 
   public void recordRejection() {
     rejectedCount++;
+  }
+
+  public void addRejections(long rejections) {
+    rejectedCount += rejections;
   }
 
   public double totalPenalty() {

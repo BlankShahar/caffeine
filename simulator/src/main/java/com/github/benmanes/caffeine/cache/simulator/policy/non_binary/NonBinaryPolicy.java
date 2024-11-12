@@ -22,12 +22,12 @@ public final class NonBinaryPolicy implements Policy {
 
   final PolicyStats policyStats;
 
-  static final long ITEM_CHUNKS_AMOUNT = 1024;
-  static final double CHUNK_SIZE = 0.001; // in MB (1 KB)
-  static final long BANDWIDTH = 1250; // in MBps
+  public static final long ITEM_CHUNKS_AMOUNT = 1024;
+  public static final double CHUNK_SIZE = 0.001; // in MB (1 KB)
+  public static final long BANDWIDTH = 1250; // in MBps
 
-  static final double MEAN = 0.2; // average delay in seconds (e.g., 200 ms)
-  static final double STANDARD_DEVIATION = 0.05; // standard deviation in seconds (e.g., 50 ms)
+  public static final double MEAN_PROCESSING_TIME = 0.2; // average delay in seconds (e.g., 200 ms)
+  public static final double STANDARD_DEVIATION_PROCESSING_TIME = 0.05; // standard deviation in seconds (e.g., 50 ms)
 
   final Random random;
 
@@ -88,17 +88,17 @@ public final class NonBinaryPolicy implements Policy {
     );
   }
 
-  private double sampleSourceProcessingTime() {
-    return MEAN + STANDARD_DEVIATION * random.nextGaussian();
+  public double sampleSourceProcessingTime() {
+    return MEAN_PROCESSING_TIME + STANDARD_DEVIATION_PROCESSING_TIME * random.nextGaussian();
   }
 
   private void insertChunks(Prefix prefix, long idealChunksAmount) {
-    // try to insert more chunks until we reach ideal fatherPrefix size,
+    // try to insert more chunks until we reach full size,
     //  or we stop due to not benefiting from it
 
     while (true) {
       if (prefix.chunksAmount() == ITEM_CHUNKS_AMOUNT) {
-        // if the prefix is already fully cached, stop inserting more chunks
+        // if the item is fully cached, stop inserting more chunks of it
         break;
       }
 
@@ -106,17 +106,17 @@ public final class NonBinaryPolicy implements Policy {
       if (currentCacheSize < maximumCacheSize) {
         // insert if there's enough space in the cache
         insertChunkToPrefix(prefix, newChunk);
-      } else {
-        // if exists, evict a chunk (victim) if there's no space
+      } else { // cache's full
+        // if exists, evict a victim chunk victim from the cache
         Chunk victim = findVictim(newChunk);
         if (victim == null) {
           // no suitable victim found and the cache is full - stop inserting
-          for (int i = 0; prefix.chunksAmount() < idealChunksAmount && i < idealChunksAmount - prefix.chunksAmount(); i++) {
-            // record rejection for each chunk that could not be inserted
-            policyStats.recordRejection();
+          if (prefix.chunksAmount() < idealChunksAmount) {
+            policyStats.addRejections(idealChunksAmount - prefix.chunksAmount());
           }
           break;
         }
+
         removeChunkFromPrefix(victim.fatherPrefix);
         insertChunkToPrefix(prefix, newChunk);
       }
