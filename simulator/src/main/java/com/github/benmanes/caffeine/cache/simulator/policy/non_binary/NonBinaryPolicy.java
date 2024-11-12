@@ -75,7 +75,10 @@ public final class NonBinaryPolicy implements Policy {
     }
 
     // Total Delay and Latency
-    policyStats.addDelay(calculateDelay(sourceDelay, old.size(), BANDWIDTH));
+    double delay = calculateDelay(sourceDelay, old.size(), BANDWIDTH);
+    if (delay > 0) {// underflow case
+      policyStats.addDelay(delay);
+    }
     policyStats.addLatency(calculateLatency(sourceDelay, AVG_ITEM_SIZE, old.size(), BANDWIDTH));
   }
 
@@ -187,8 +190,7 @@ public final class NonBinaryPolicy implements Policy {
     double prefixLatency = (double) prefixSize / bandwidth;
     double delay = calculateDelay(sourceDelay, prefixSize, bandwidth);
     double restLatency = (double) 2 * (itemSize - prefixSize) / bandwidth; // source->cache->client
-    if (delay < 0) {
-      // overflow case
+    if (delay < 0) { // overflow case
       return prefixLatency + restLatency;
     }
     return prefixLatency + delay + restLatency;
@@ -212,7 +214,7 @@ public final class NonBinaryPolicy implements Policy {
     double currentDelay = calculateDelay(sourceDelay, chunk.fatherPrefix.size(), BANDWIDTH);
     double newSampleSourceDelay = sampleSourceProcessingTime();
     double newDelay = calculateDelay(newSampleSourceDelay, chunk.fatherPrefix.size() + 1, BANDWIDTH);
-    double deltaDelay = currentDelay- newDelay;
+    double deltaDelay = currentDelay - newDelay;
     return chunk.fatherPrefix.frequency * deltaDelay;
   }
 
