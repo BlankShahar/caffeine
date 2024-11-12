@@ -9,7 +9,6 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import javax.annotation.Nullable;
-import java.security.InvalidParameterException;
 import java.util.ArrayList;
 import java.util.Optional;
 import java.util.Random;
@@ -24,7 +23,9 @@ public final class NonBinaryPolicy implements Policy {
   final PolicyStats policyStats;
 
   static final long AVG_ITEM_SIZE = 1024; // in chunks
+  static final double CHUNK_SIZE = 0.001; // in MB (1 KB)
   static final long BANDWIDTH = 1250; // in MBps
+
   static final double MEAN = 0.2; // average delay in seconds (e.g., 200 ms)
   static final double STANDARD_DEVIATION = 0.05; // standard deviation in seconds (e.g., 50 ms)
 
@@ -179,17 +180,31 @@ public final class NonBinaryPolicy implements Policy {
     return possibleVictims;
   }
 
-  private static double calculateDelay(double sourceDelay, long prefixSize, long bandwidth) {
-    if (prefixSize < 0) {
-      throw new InvalidParameterException("Prefix size must be non-negative!");
-    }
-    return sourceDelay - (double) prefixSize / bandwidth;
+  /**
+   * Calculate the full latency of fetching a partial cached object
+   *
+   * @param sourceDelay in seconds
+   * @param prefixSize  in MB
+   * @param bandwidth   in MBps
+   * @return the delay in seconds
+   */
+  private static double calculateDelay(double sourceDelay, double prefixSize, long bandwidth) {
+    return sourceDelay - prefixSize * CHUNK_SIZE / bandwidth;
   }
 
-  private double calculateLatency(double sourceDelay, long itemSize, long prefixSize, long bandwidth) {
-    double prefixLatency = (double) prefixSize / bandwidth;
+  /**
+   * Calculate the full latency of fetching a partial cached object
+   *
+   * @param sourceDelay in s
+   * @param itemSize    In chunks
+   * @param prefixSize  in chunks
+   * @param bandwidth   in MBps
+   * @return the latency in seconds
+   */
+  private double calculateLatency(double sourceDelay, double itemSize, double prefixSize, long bandwidth) {
+    double prefixLatency = prefixSize * CHUNK_SIZE / bandwidth; // cache->client
     double delay = calculateDelay(sourceDelay, prefixSize, bandwidth);
-    double restLatency = (double) 2 * (itemSize - prefixSize) / bandwidth; // source->cache->client
+    double restLatency = (double) 2 * (itemSize - prefixSize) * CHUNK_SIZE / bandwidth; // source->cache->client
     if (delay < 0) { // overflow case
       return prefixLatency + restLatency;
     }
@@ -200,6 +215,9 @@ public final class NonBinaryPolicy implements Policy {
     // calculate the benefit of inserting a new chunk to its prefix
     // D_i[r] = T[s] - (|P_i[r]| + 1) / B
     // Benefit = F_i * (D_i[r+1] - D_i[r])
+    // double newDelay = calculateDelay(sourceDelay, chunk.fatherPrefix.size() + 1, BANDWIDTH);
+    // return 1 / Math.pow(newDelay, 2) * chunk.fatherPrefix.frequency;
+
     double currentDelay = calculateDelay(sourceDelay, chunk.fatherPrefix.size(), BANDWIDTH);
     double newSampleSourceDelay = sampleSourceProcessingTime();
     double newDelay = calculateDelay(newSampleSourceDelay, chunk.fatherPrefix.size() + 1, BANDWIDTH);
@@ -211,6 +229,9 @@ public final class NonBinaryPolicy implements Policy {
     // calculate the cost of inserting a new chunk to its prefix
     // D_i[r] = T[s] - (|P_i[r]| + 1) / B
     // Cost = F_i * (D_i[r] - D_i[r+1])
+    // double newDelay = calculateDelay(sourceDelay, chunk.fatherPrefix.size() - 1, BANDWIDTH);
+    // return 1 / Math.pow(newDelay, 2) * chunk.fatherPrefix.frequency;
+
     double currentDelay = calculateDelay(sourceDelay, chunk.fatherPrefix.size(), BANDWIDTH);
     double newSampleSourceDelay = sampleSourceProcessingTime();
     double newDelay = calculateDelay(newSampleSourceDelay, chunk.fatherPrefix.size() + 1, BANDWIDTH);
