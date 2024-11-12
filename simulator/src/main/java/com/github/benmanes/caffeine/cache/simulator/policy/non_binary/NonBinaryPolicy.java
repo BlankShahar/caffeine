@@ -252,8 +252,8 @@ public final class NonBinaryPolicy implements Policy {
     // return 1 / Math.pow(newDelay, 2) * chunk.fatherPrefix.frequency;
 
     double currentDelay = calculateDelay(approximatedSourceDelay, chunk.fatherPrefix, BANDWIDTH);
-    double newSampleSourceDelay = sampleSourceProcessingTime();
-    double newDelay = calculateDelay(newSampleSourceDelay, chunk.fatherPrefix.fullItemSizeInMB(), chunk.fatherPrefix.sizeInMB() + CHUNK_SIZE, BANDWIDTH);
+    double approximatedNextSampleSourceDelay = sampleSourceProcessingTime();
+    double newDelay = calculateDelay(approximatedNextSampleSourceDelay, chunk.fatherPrefix.fullItemSizeInMB(), chunk.fatherPrefix.sizeInMB() + CHUNK_SIZE, BANDWIDTH);
     double deltaDelay = newDelay - currentDelay;
     return chunk.fatherPrefix.frequency * deltaDelay;
   }
@@ -266,8 +266,8 @@ public final class NonBinaryPolicy implements Policy {
     // return 1 / Math.pow(newDelay, 2) * chunk.fatherPrefix.frequency;
 
     double currentDelay = calculateDelay(approximatedSourceDelay, chunk.fatherPrefix, BANDWIDTH);
-    double newApproximatedSampleSourceDelay = sampleSourceProcessingTime();
-    double newDelay = calculateDelay(newApproximatedSampleSourceDelay, chunk.fatherPrefix.fullItemSizeInMB(), chunk.fatherPrefix.sizeInMB() - CHUNK_SIZE, BANDWIDTH);
+    double approximatedNextSampleSourceDelay = sampleSourceProcessingTime();
+    double newDelay = calculateDelay(approximatedNextSampleSourceDelay, chunk.fatherPrefix.fullItemSizeInMB(), chunk.fatherPrefix.sizeInMB() - CHUNK_SIZE, BANDWIDTH);
     double deltaDelay = currentDelay - newDelay;
     return chunk.fatherPrefix.frequency * deltaDelay;
   }
