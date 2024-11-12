@@ -12,13 +12,12 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Optional;
 import java.util.Random;
-import java.util.Stack;
 
-@Policy.PolicySpec(name = "non-binary.NonBinary")
-public final class NonBinaryPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.Prefix")
+public final class PrefixPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final long maximumCacheSize; // in chunks
-  long currentCacheSize;
+  long currentCacheSize; // in chunks
 
   final PolicyStats policyStats;
 
@@ -31,9 +30,9 @@ public final class NonBinaryPolicy implements Policy {
 
   final Random random;
 
-  public NonBinaryPolicy(Config config) {
+  public PrefixPolicy(Config config) {
     var settings = new BasicSettings(config);
-    this.policyStats = new PolicyStats("Non-Binary");
+    this.policyStats = new PolicyStats("non-binary.Prefix");
 
     this.data = new Long2ObjectOpenHashMap<>();
 
@@ -61,7 +60,7 @@ public final class NonBinaryPolicy implements Policy {
     double approximatedIdealSize = (long) (calculateDelay(approximatedSourceDelay, currentPrefix, BANDWIDTH) * BANDWIDTH);
     long approximatedIdealChunksAmount = Math.min(ITEM_CHUNKS_AMOUNT, (long) (approximatedIdealSize / CHUNK_SIZE));
     insertChunks(currentPrefix, approximatedIdealChunksAmount);
-    if (currentPrefix.chunksAmount() > 0) {
+    if (currentPrefix.chunksAmount > 0) {
       data.put(itemKey, currentPrefix);
       policyStats.recordOperation();
     }
@@ -73,9 +72,9 @@ public final class NonBinaryPolicy implements Policy {
     long idealSize = (long) (calculateDelay(realSourceDelay, old, BANDWIDTH) * BANDWIDTH);
 
     // Chunk Hit Rate
-    policyStats.addHits(old.chunksAmount());
-    if (old.chunksAmount() < idealSize) { // underflow case
-      policyStats.addMisses(idealSize - old.chunksAmount());
+    policyStats.addHits(old.chunksAmount);
+    if (old.chunksAmount < idealSize) { // underflow case
+      policyStats.addMisses(idealSize - old.chunksAmount);
     }
 
     // Total real delay and latency
@@ -97,28 +96,28 @@ public final class NonBinaryPolicy implements Policy {
     //  or we stop due to not benefiting from it
 
     while (true) {
-      if (prefix.chunksAmount() == ITEM_CHUNKS_AMOUNT) {
+      if (prefix.chunksAmount == ITEM_CHUNKS_AMOUNT) {
         // if the item is fully cached, stop inserting more chunks of it
         break;
       }
 
-      Chunk newChunk = new Chunk(prefix);
+      // Chunk newChunk = new Chunk(prefix);
       if (currentCacheSize < maximumCacheSize) {
         // insert if there's enough space in the cache
-        insertChunkToPrefix(prefix, newChunk);
+        prefix.insertChunk();
       } else { // cache's full
         // if exists, evict a victim chunk victim from the cache
-        Chunk victim = findVictim(newChunk);
+        Prefix victim = findVictim(prefix);
         if (victim == null) {
           // no suitable victim found and the cache is full - stop inserting
-          if (prefix.chunksAmount() < idealChunksAmount) {
-            policyStats.addRejections(idealChunksAmount - prefix.chunksAmount());
+          if (prefix.chunksAmount < idealChunksAmount) {
+            policyStats.addRejections(idealChunksAmount - prefix.chunksAmount);
           }
           break;
         }
 
-        removeChunkFromPrefix(victim.fatherPrefix);
-        insertChunkToPrefix(prefix, newChunk);
+        removeChunkFromPrefix(victim);
+        insertChunkToPrefix(prefix);
       }
     }
   }
@@ -126,41 +125,40 @@ public final class NonBinaryPolicy implements Policy {
   private void removeChunkFromPrefix(Prefix victimPrefix) {
     victimPrefix.removeChunk();
     currentCacheSize--;
-    if (victimPrefix.chunksAmount() == 0) {
+    if (victimPrefix.chunksAmount == 0) {
       data.remove(victimPrefix.itemKey);
     }
     policyStats.recordOperation();
     policyStats.recordEviction();
   }
 
-  private void insertChunkToPrefix(Prefix prefix, Chunk newChunk) {
-    prefix.insertChunk(newChunk);
+  private void insertChunkToPrefix(Prefix prefix) {
+    prefix.insertChunk();
     currentCacheSize++;
     policyStats.recordOperation();
     policyStats.recordAdmission();
   }
 
   /**
-   * @param newChunk the new chunk to be inserted
+   * @param wantedPrefix the prefix of the new chunk to be inserted
    * @return the victim chunk to be evicted, or null if no suitable one is found
    */
   @Nullable
-  private Chunk findVictim(Chunk newChunk) {
-    ArrayList<Chunk> victimCandidates = getAllEndChunks();
-    double sourceDelay = sampleSourceProcessingTime();
-    ArrayList<Chunk> suitableVictims = findSuitableVictims(newChunk, victimCandidates, sourceDelay);
-    return getLowestEvictionCostChunk(suitableVictims, sourceDelay);
+  private Prefix findVictim(Prefix wantedPrefix) {
+    double approximateSourceDelay = sampleSourceProcessingTime();
+    ArrayList<Prefix> suitableVictims = findSuitableVictims(wantedPrefix, approximateSourceDelay);
+    return getLowestEvictionCostChunk(suitableVictims, approximateSourceDelay);
   }
 
   @Nullable
-  private Chunk getLowestEvictionCostChunk(ArrayList<Chunk> possibleVictims, double sourceDelay) {
+  private Prefix getLowestEvictionCostChunk(ArrayList<Prefix> possibleVictims, double sourceDelay) {
     if (possibleVictims.isEmpty()) {
       return null;
     }
 
     policyStats.recordOperation();
-    Chunk victim = possibleVictims.get(0);
-    for (Chunk candidate : possibleVictims) {
+    Prefix victim = possibleVictims.get(0);
+    for (Prefix candidate : possibleVictims) {
       if (evictionCost(candidate, sourceDelay) < evictionCost(victim, sourceDelay)) {
         victim = candidate;
       }
@@ -169,21 +167,19 @@ public final class NonBinaryPolicy implements Policy {
   }
 
   /**
-   * @param newChunk         the new chunk to be inserted
-   * @param victimCandidates the list of possible victims - all end chunks
+   * @param wantedPrefix     the prefix of the new chunk to be inserted
    * @param sourceDelay      the source processing time
    * @return list of possible victims that can be evicted -
    * those that have a lower eviction benefit than the new chunk insertion benefit
    */
-  private ArrayList<Chunk> findSuitableVictims(
-    Chunk newChunk,
-    ArrayList<Chunk> victimCandidates,
+  private ArrayList<Prefix> findSuitableVictims(
+    Prefix wantedPrefix,
     double sourceDelay
   ) {
     policyStats.recordOperation();
-    ArrayList<Chunk> possibleVictims = new ArrayList<>();
-    for (Chunk candidate : victimCandidates) {
-      if (insertionBenefit(newChunk, sourceDelay) >= evictionCost(candidate, sourceDelay)) {
+    ArrayList<Prefix> possibleVictims = new ArrayList<>();
+    for (Prefix candidate : data.values()) {
+      if (insertionBenefit(wantedPrefix, sourceDelay) >= evictionCost(candidate, sourceDelay)) {
         possibleVictims.add(candidate);
       }
     }
@@ -244,41 +240,32 @@ public final class NonBinaryPolicy implements Policy {
     return prefixLatency + delay + restLatency;
   }
 
-  private double insertionBenefit(Chunk chunk, double approximatedSourceDelay) {
+  private double insertionBenefit(Prefix prefix, double approximatedSourceDelay) {
     // calculate the benefit of inserting a new chunk to its prefix
     // D_i[r] = T[s] - (|P_i[r]| + 1) / B
     // Benefit = F_i * (D_i[r+1] - D_i[r])
     // double newDelay = calculateDelay(approximatedSourceDelay, chunk.fatherPrefix.size() + 1, BANDWIDTH);
     // return 1 / Math.pow(newDelay, 2) * chunk.fatherPrefix.frequency;
 
-    double currentDelay = calculateDelay(approximatedSourceDelay, chunk.fatherPrefix, BANDWIDTH);
+    double currentDelay = calculateDelay(approximatedSourceDelay, prefix, BANDWIDTH);
     double approximatedNextSampleSourceDelay = sampleSourceProcessingTime();
-    double newDelay = calculateDelay(approximatedNextSampleSourceDelay, chunk.fatherPrefix.fullItemSizeInMB(), chunk.fatherPrefix.sizeInMB() + CHUNK_SIZE, BANDWIDTH);
+    double newDelay = calculateDelay(approximatedNextSampleSourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB() + CHUNK_SIZE, BANDWIDTH);
     double deltaDelay = newDelay - currentDelay;
-    return chunk.fatherPrefix.frequency * deltaDelay;
+    return prefix.frequency * deltaDelay;
   }
 
-  private double evictionCost(Chunk chunk, double approximatedSourceDelay) {
+  private double evictionCost(Prefix prefix, double approximatedSourceDelay) {
     // calculate the cost of inserting a new chunk to its prefix
     // D_i[r] = T[s] - (|P_i[r]| + 1) / B
     // Cost = F_i * (D_i[r] - D_i[r+1])
     // double newDelay = calculateDelay(approximatedSourceDelay, chunk.fatherPrefix.size() - 1, BANDWIDTH);
     // return 1 / Math.pow(newDelay, 2) * chunk.fatherPrefix.frequency;
 
-    double currentDelay = calculateDelay(approximatedSourceDelay, chunk.fatherPrefix, BANDWIDTH);
+    double currentDelay = calculateDelay(approximatedSourceDelay, prefix, BANDWIDTH);
     double approximatedNextSampleSourceDelay = sampleSourceProcessingTime();
-    double newDelay = calculateDelay(approximatedNextSampleSourceDelay, chunk.fatherPrefix.fullItemSizeInMB(), chunk.fatherPrefix.sizeInMB() - CHUNK_SIZE, BANDWIDTH);
+    double newDelay = calculateDelay(approximatedNextSampleSourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB() - CHUNK_SIZE, BANDWIDTH);
     double deltaDelay = currentDelay - newDelay;
-    return chunk.fatherPrefix.frequency * deltaDelay;
-  }
-
-  private ArrayList<Chunk> getAllEndChunks() {
-    policyStats.recordOperation();
-    ArrayList<Chunk> endChunks = new ArrayList<>();
-    for (Prefix prefix : data.values()) {
-      endChunks.add(prefix.chunks.peek());
-    }
-    return endChunks;
+    return prefix.frequency * deltaDelay;
   }
 
   @Override
@@ -306,30 +293,28 @@ public final class NonBinaryPolicy implements Policy {
 
   static class Prefix {
     final long itemKey, fullItemChunksAmount;
+    long chunksAmount;
     long frequency;
-    Stack<Chunk> chunks;
 
     public Prefix(long itemKey, long fullItemChunksAmount) {
       this.itemKey = itemKey;
       this.fullItemChunksAmount = fullItemChunksAmount;
       this.frequency = 0;
-      this.chunks = new Stack<>();
+      this.chunksAmount = 0;
     }
 
-    public void insertChunk(Chunk chunk) {
-      chunks.push(chunk);
+    public void insertChunk() {
+      chunksAmount++;
     }
 
     public void removeChunk() {
-      chunks.pop();
-    }
-
-    public long chunksAmount() {
-      return chunks.size();
+      if (chunksAmount > 0) {
+        chunksAmount--;
+      }
     }
 
     public double sizeInMB() {
-      return chunks.size() * CHUNK_SIZE;
+      return chunksAmount * CHUNK_SIZE;
     }
 
     public double fullItemSizeInMB() {
@@ -337,7 +322,7 @@ public final class NonBinaryPolicy implements Policy {
     }
 
     public boolean isFull() {
-      return chunksAmount() == fullItemChunksAmount;
+      return chunksAmount == fullItemChunksAmount;
     }
   }
 }
