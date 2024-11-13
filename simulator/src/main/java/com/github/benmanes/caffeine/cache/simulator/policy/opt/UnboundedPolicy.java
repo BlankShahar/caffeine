@@ -17,6 +17,7 @@ package com.github.benmanes.caffeine.cache.simulator.policy.opt;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 
+import java.util.Random;
 import java.util.Set;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
@@ -24,6 +25,8 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.google.common.primitives.Ints;
 import com.typesafe.config.Config;
 
@@ -42,6 +45,8 @@ public final class UnboundedPolicy implements Policy {
   private final PolicyStats policyStats;
   private final LongSet data;
 
+  private final Random realSourceTimeSampler;
+
   public UnboundedPolicy(Config config, Set<Characteristic> characteristics) {
     var settings = new BasicSettings(config);
     int initialSize = characteristics.contains(WEIGHTED)
@@ -49,6 +54,8 @@ public final class UnboundedPolicy implements Policy {
         : Ints.saturatedCast(settings.maximumSize());
     data = new LongOpenHashSet(initialSize);
     policyStats = new PolicyStats(name());
+
+    realSourceTimeSampler = new Random(Consts.REAL_SEED);
   }
 
   @Override
@@ -59,10 +66,17 @@ public final class UnboundedPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     policyStats.recordOperation();
+
+    double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     if (data.add(event.key())) {
       policyStats.recordWeightedMiss(event.weight());
+
+      double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
+      policyStats.addDelay(realSourceProcessingTime);
     } else {
       policyStats.recordWeightedHit(event.weight());
+      policyStats.addLatency(TimeCalculations.calculateTransmissionTime(itemSize, Consts.BANDWIDTH));
     }
   }
 }
