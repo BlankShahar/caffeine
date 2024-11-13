@@ -76,7 +76,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
   private int sizeB2;
   private int p;
 
-  private final Random random;
+  private final Random realSourceTimeSampler;
 
   public ArcPolicy(Config config) {
     var settings = new BasicSettings(config);
@@ -88,7 +88,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     this.headB1 = new Node(ITEM_CHUNKS_AMOUNT * CHUNK_SIZE);
     this.headB2 = new Node(ITEM_CHUNKS_AMOUNT * CHUNK_SIZE);
 
-    random = new Random(1337);
+    realSourceTimeSampler = new Random(REAL_SEED);
   }
 
   @Override
@@ -136,7 +136,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT2);
 
     policyStats.recordMiss();
-    double realSourceProcessingTime = sampleSourceProcessingTime();
+    double realSourceProcessingTime = getRealNextSourceProcessingTime();
     policyStats.addLatency(calculateMissLatency(realSourceProcessingTime, node.size, BANDWIDTH));
     policyStats.addDelay(realSourceProcessingTime);
   }
@@ -156,7 +156,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT2);
 
     policyStats.recordMiss();
-    double realSourceProcessingTime = sampleSourceProcessingTime();
+    double realSourceProcessingTime = getRealNextSourceProcessingTime();
     policyStats.addLatency(calculateMissLatency(realSourceProcessingTime, node.size, BANDWIDTH));
     policyStats.addDelay(realSourceProcessingTime);  }
 
@@ -204,7 +204,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT1);
 
     policyStats.recordMiss();
-    double realSourceProcessingTime = sampleSourceProcessingTime();
+    double realSourceProcessingTime = getRealNextSourceProcessingTime();
     policyStats.addLatency(calculateMissLatency(realSourceProcessingTime, node.size, BANDWIDTH));
     policyStats.addDelay(realSourceProcessingTime);  }
 
@@ -252,16 +252,16 @@ public final class ArcPolicy implements KeyOnlyPolicy {
   }
 
   private double calculateMissLatency(double sourceDelay, double itemSize, long bandwidth) {
-    double latency = 2 * itemSize / bandwidth;
-    return sourceDelay + latency;
+    double transmission_time = 2 * itemSize / bandwidth;
+    return sourceDelay + transmission_time;
   }
 
   private double calculateHitLatency(double itemSize, long bandwidth) {
     return itemSize / bandwidth;
   }
 
-  public double sampleSourceProcessingTime() {
-    return MEAN_PROCESSING_TIME + STANDARD_DEVIATION_PROCESSING_TIME * random.nextGaussian();
+  public double getRealNextSourceProcessingTime() {
+    return MEAN_PROCESSING_TIME + STANDARD_DEVIATION_PROCESSING_TIME * realSourceTimeSampler.nextGaussian();
   }
 
   private enum QueueType {
