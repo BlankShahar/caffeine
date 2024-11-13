@@ -253,6 +253,10 @@ public class PolicyStats {
     rejectedCount++;
   }
 
+  public void addRejections(long rejections) {
+    rejectedCount += rejections;
+  }
+
   public double totalPenalty() {
     return hitPenalty + missPenalty;
   }
