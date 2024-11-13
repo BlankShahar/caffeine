@@ -20,8 +20,11 @@ import static com.google.common.base.Preconditions.checkState;
 
 import java.util.NavigableSet;
 import java.util.Objects;
+import java.util.Random;
 import java.util.TreeSet;
 
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
@@ -61,6 +64,8 @@ public final class CampPolicy implements Policy {
   private long requestCount;
   private int size;
 
+  private final Random realSourceTimeSampler;
+
   public CampPolicy(Config config) {
     var settings = new CampSettings(config);
 
@@ -72,17 +77,28 @@ public final class CampPolicy implements Policy {
     this.data = new Long2ObjectOpenHashMap<>();
     this.sentinelMapping = new Int2ObjectOpenHashMap<>();
     this.bitMask = Integer.MAX_VALUE >> (Integer.SIZE - 1 - precision);
+
+    realSourceTimeSampler = new Random(Consts.REAL_SEED);
   }
 
   @Override
   public void record(AccessEvent event) {
     var node = data.get(event.key());
     requestCount++;
+
+    double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     if (node == null) {
       policyStats.recordWeightedMiss(event.weight());
+
+      double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
+      policyStats.addDelay(realSourceProcessingTime);
+
       onMiss(event);
     } else {
       policyStats.recordWeightedHit(event.weight());
+      policyStats.addLatency(TimeCalculations.calculateTransmissionTime(itemSize, Consts.BANDWIDTH));
+
       onHit(node);
       size += (event.weight() - node.weight);
       node.weight = event.weight();
