@@ -60,8 +60,8 @@ public final class PrefixPolicy implements Policy {
     recordRequestStatistics(currentPrefix);
 
     double approximatedSourceDelay = sampleApproximatedSourceProcessingTime();
-    double approximatedIdealSize = (long) (calculateDelay(approximatedSourceDelay, currentPrefix, BANDWIDTH) * BANDWIDTH);
-    long approximatedIdealChunksAmount = Math.min(ITEM_CHUNKS_AMOUNT, (long) (approximatedIdealSize / CHUNK_SIZE));
+    double approximatedIdealSize = Math.min(currentPrefix.fullItemSizeInMB(), (calculateDelay(approximatedSourceDelay, currentPrefix, BANDWIDTH) * BANDWIDTH));
+    long approximatedIdealChunksAmount = Math.round(approximatedIdealSize / CHUNK_SIZE);
     insertChunks(currentPrefix, approximatedIdealChunksAmount);
     if (currentPrefix.chunksAmount > 0) {
       data.put(itemKey, currentPrefix);
@@ -71,23 +71,19 @@ public final class PrefixPolicy implements Policy {
 
   private void recordRequestStatistics(Prefix old) {
     double realSourceDelay = getRealNextSourceProcessingTime();
-    // The ideal prefix size - the number of chunks that give the "no delay" illusion
-    long idealSize = (long) (calculateDelay(realSourceDelay, old, BANDWIDTH) * BANDWIDTH);
+    // The ideal prefix size - the size that gives "no delay"/"all the item is cached" illusion
+    double realIdealSize = Math.min(old.fullItemSizeInMB(), (calculateDelay(realSourceDelay, old, BANDWIDTH) * BANDWIDTH));
+    long realIdealChunksAmount = Math.round(realIdealSize / CHUNK_SIZE);
 
     // Chunk Hit Rate
     policyStats.addHits(old.chunksAmount);
-    if (old.chunksAmount < idealSize) { // underflow case
-      policyStats.addMisses(idealSize - old.chunksAmount);
-    }
+    policyStats.addMisses(Math.max(0, realIdealChunksAmount - old.chunksAmount));
 
     // Total real delay and latency
     double delay = calculateDelay(realSourceDelay, old, BANDWIDTH);
-    if (delay > 0) {// underflow case
-      policyStats.addDelay(delay);
-    }
-    policyStats.addLatency(
-      calculateLatency(realSourceDelay, old, BANDWIDTH)
-    );
+    policyStats.addDelay(Math.max(0, delay));
+    double latency = calculateLatency(realSourceDelay, old, BANDWIDTH);
+    policyStats.addLatency(latency);
   }
 
   private double sampleApproximatedSourceProcessingTime() {
@@ -173,8 +169,8 @@ public final class PrefixPolicy implements Policy {
   }
 
   /**
-   * @param wantedPrefix the prefix of the new chunk to be inserted
-   * @param approximateSourceDelay  the approximated source processing time
+   * @param wantedPrefix           the prefix of the new chunk to be inserted
+   * @param approximateSourceDelay the approximated source processing time
    * @return list of possible victims that can be evicted -
    * those that have a lower eviction benefit than the new chunk insertion benefit
    */
