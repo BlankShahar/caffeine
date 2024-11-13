@@ -15,9 +15,10 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.adaptive;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.PrefixPolicy.*;
 import static com.google.common.base.Preconditions.checkState;
 
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
@@ -83,12 +84,12 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     this.policyStats = new PolicyStats(name());
     this.data = new Long2ObjectOpenHashMap<>();
-    this.headT1 = new Node(ITEM_CHUNKS_AMOUNT * CHUNK_SIZE);
-    this.headT2 = new Node(ITEM_CHUNKS_AMOUNT * CHUNK_SIZE);
-    this.headB1 = new Node(ITEM_CHUNKS_AMOUNT * CHUNK_SIZE);
-    this.headB2 = new Node(ITEM_CHUNKS_AMOUNT * CHUNK_SIZE);
+    this.headT1 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
+    this.headT2 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
+    this.headB1 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
+    this.headB2 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
 
-    realSourceTimeSampler = new Random(REAL_SEED);
+    realSourceTimeSampler = new Random(Consts.REAL_SEED);
   }
 
   @Override
@@ -118,7 +119,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT2);
 
     policyStats.recordHit();
-    policyStats.addLatency(calculateHitLatency(node.size, BANDWIDTH));
+    policyStats.addLatency(TimeCalculations.calculateTransmissionTime(node.size, Consts.BANDWIDTH));
   }
 
   private void onHitB1(Node node) {
@@ -136,8 +137,8 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT2);
 
     policyStats.recordMiss();
-    double realSourceProcessingTime = getRealNextSourceProcessingTime();
-    policyStats.addLatency(calculateMissLatency(realSourceProcessingTime, node.size, BANDWIDTH));
+    double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+    policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
     policyStats.addDelay(realSourceProcessingTime);
   }
 
@@ -156,9 +157,10 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT2);
 
     policyStats.recordMiss();
-    double realSourceProcessingTime = getRealNextSourceProcessingTime();
-    policyStats.addLatency(calculateMissLatency(realSourceProcessingTime, node.size, BANDWIDTH));
-    policyStats.addDelay(realSourceProcessingTime);  }
+    double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+    policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
+    policyStats.addDelay(realSourceProcessingTime);
+  }
 
   private void onMiss(long key) {
     // x ∈ L1 ∪ L2 (a miss in DBL(2c) and ARC(c)):
@@ -170,7 +172,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     //   REPLACE(p) .
     // Put x at the top of T1 and place it in the cache.
 
-    var node = new Node(key, ITEM_CHUNKS_AMOUNT * CHUNK_SIZE);
+    var node = new Node(key, Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
     node.type = QueueType.T1;
 
     int sizeL1 = (sizeT1 + sizeB1);
@@ -204,9 +206,10 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT1);
 
     policyStats.recordMiss();
-    double realSourceProcessingTime = getRealNextSourceProcessingTime();
-    policyStats.addLatency(calculateMissLatency(realSourceProcessingTime, node.size, BANDWIDTH));
-    policyStats.addDelay(realSourceProcessingTime);  }
+    double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+    policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
+    policyStats.addDelay(realSourceProcessingTime);
+  }
 
   /**
    * Evicts while the map exceeds the maximum capacity.
@@ -249,19 +252,6 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     checkState(sizeB2 == data.values().stream().filter(node -> node.type == QueueType.B2).count());
     checkState((sizeT1 + sizeT2) <= maximumSize);
     checkState((sizeB1 + sizeB2) <= maximumSize);
-  }
-
-  private double calculateMissLatency(double sourceDelay, double itemSize, long bandwidth) {
-    double transmission_time = 2 * itemSize / bandwidth;
-    return sourceDelay + transmission_time;
-  }
-
-  private double calculateHitLatency(double itemSize, long bandwidth) {
-    return itemSize / bandwidth;
-  }
-
-  public double getRealNextSourceProcessingTime() {
-    return MEAN_PROCESSING_TIME + STANDARD_DEVIATION_PROCESSING_TIME * realSourceTimeSampler.nextGaussian();
   }
 
   private enum QueueType {

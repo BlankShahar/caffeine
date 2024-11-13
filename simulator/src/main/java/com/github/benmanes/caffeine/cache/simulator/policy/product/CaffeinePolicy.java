@@ -15,10 +15,6 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.product;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
-
-import java.util.Set;
-
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
@@ -27,8 +23,15 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.google.common.primitives.Ints;
 import com.typesafe.config.Config;
+
+import java.util.Random;
+import java.util.Set;
+
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 
 /**
  * Caffeine cache implementation.
@@ -40,13 +43,15 @@ public final class CaffeinePolicy implements Policy {
   private final Cache<Long, AccessEvent> cache;
   private final PolicyStats policyStats;
 
+  private final Random realSourceTimeSampler;
+
   public CaffeinePolicy(Config config, Set<Characteristic> characteristics) {
     policyStats = new PolicyStats(name());
     var settings = new BasicSettings(config);
     Caffeine<Long, AccessEvent> builder = Caffeine.newBuilder()
-        .removalListener((Long key, AccessEvent value, RemovalCause cause) ->
-            policyStats.recordEviction())
-        .executor(Runnable::run);
+      .removalListener((Long key, AccessEvent value, RemovalCause cause) ->
+        policyStats.recordEviction())
+      .executor(Runnable::run);
     if (characteristics.contains(WEIGHTED)) {
       builder.maximumWeight(settings.maximumSize());
       builder.weigher((key, value) -> value.weight());
@@ -55,18 +60,28 @@ public final class CaffeinePolicy implements Policy {
       builder.initialCapacity(Ints.saturatedCast(settings.maximumSize()));
     }
     cache = builder.build();
+
+    realSourceTimeSampler = new Random(Consts.REAL_SEED);
   }
 
   @Override
   public void record(AccessEvent event) {
+    double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+    double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
+
     AccessEvent value = cache.getIfPresent(event.key());
     if (value == null) {
       cache.put(event.key(), event);
       policyStats.recordWeightedMiss(event.weight());
+
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
+      policyStats.addDelay(realSourceProcessingTime);
     } else {
       policyStats.recordWeightedHit(event.weight());
       if (event.weight() != value.weight()) {
         cache.put(event.key(), event);
+
+        policyStats.addLatency(TimeCalculations.calculateTransmissionTime(itemSize, Consts.BANDWIDTH));
       }
     }
   }
