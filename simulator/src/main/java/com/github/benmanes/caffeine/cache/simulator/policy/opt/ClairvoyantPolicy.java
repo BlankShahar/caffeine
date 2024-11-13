@@ -17,12 +17,15 @@ package com.github.benmanes.caffeine.cache.simulator.policy.opt;
 
 import java.util.ArrayDeque;
 import java.util.Queue;
+import java.util.Random;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.typesafe.config.Config;
 
 import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;
@@ -51,6 +54,8 @@ public final class ClairvoyantPolicy implements Policy {
   private int infiniteTimestamp;
   private int tick;
 
+  private final Random realSourceTimeSampler;
+
   public ClairvoyantPolicy(Config config) {
     var settings = new BasicSettings(config);
     maximumSize = Math.toIntExact(settings.maximumSize());
@@ -58,6 +63,8 @@ public final class ClairvoyantPolicy implements Policy {
     policyStats = new PolicyStats(name());
     infiniteTimestamp = Integer.MAX_VALUE;
     data = new IntRBTreeSet();
+
+    realSourceTimeSampler = new Random(Consts.REAL_SEED);
   }
 
   @Override
@@ -100,12 +107,20 @@ public final class ClairvoyantPolicy implements Policy {
     } else {
       data.add(times.firstInt());
     }
+
+    double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     if (found) {
       policyStats.recordHit();
       policyStats.recordHitPenalty(hitPenalty);
+
+      policyStats.addLatency(TimeCalculations.calculateTransmissionTime(itemSize, Consts.BANDWIDTH));
     } else {
       policyStats.recordMiss();
       policyStats.recordMissPenalty(missPenalty);
+
+      double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
+      policyStats.addDelay(realSourceProcessingTime);
       if (data.size() > maximumSize) {
         evict();
       }
