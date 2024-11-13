@@ -17,6 +17,7 @@ package com.github.benmanes.caffeine.cache.simulator.policy.product;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 
+import java.util.Random;
 import java.util.Set;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
@@ -24,6 +25,8 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.typesafe.config.Config;
@@ -38,11 +41,13 @@ public final class GuavaPolicy implements Policy {
   private final Cache<Long, AccessEvent> cache;
   private final PolicyStats policyStats;
 
+  private final Random realSourceTimeSampler;
+
   public GuavaPolicy(Config config, Set<Characteristic> characteristics) {
     policyStats = new PolicyStats(name());
     var settings = new BasicSettings(config);
     CacheBuilder<Long, AccessEvent> builder = CacheBuilder.newBuilder()
-        .removalListener(notification -> policyStats.recordEviction());
+      .removalListener(notification -> policyStats.recordEviction());
     if (characteristics.contains(WEIGHTED)) {
       builder.maximumWeight(settings.maximumSize());
       builder.weigher((key, value) -> value.weight());
@@ -50,16 +55,26 @@ public final class GuavaPolicy implements Policy {
       builder.maximumSize(settings.maximumSize());
     }
     cache = builder.build();
+
+    realSourceTimeSampler = new Random(Consts.REAL_SEED);
   }
 
   @Override
   public void record(AccessEvent event) {
     AccessEvent value = cache.getIfPresent(event.key());
+    double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
+
     if (value == null) {
       cache.put(event.key(), event);
       policyStats.recordWeightedMiss(event.weight());
+
+      double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
+      policyStats.addDelay(realSourceProcessingTime);
     } else {
       policyStats.recordWeightedHit(event.weight());
+      policyStats.addLatency(TimeCalculations.calculateTransmissionTime(itemSize, Consts.BANDWIDTH));
+
       if (event.weight() != value.weight()) {
         cache.put(event.key(), event);
       }
