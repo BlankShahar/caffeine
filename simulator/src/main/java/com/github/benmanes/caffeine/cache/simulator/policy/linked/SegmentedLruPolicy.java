@@ -17,6 +17,7 @@ package com.github.benmanes.caffeine.cache.simulator.policy.linked;
 
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
+import java.util.Random;
 import java.util.Set;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
@@ -26,6 +27,8 @@ import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 
@@ -54,7 +57,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  */
 @PolicySpec(name = "linked.SegmentedLru")
 public final class SegmentedLruPolicy implements KeyOnlyPolicy {
-  static final Node UNLINKED = new Node();
+  static final Node UNLINKED = new Node(0);
 
   final Long2ObjectMap<Node> data;
   final PolicyStats policyStats;
@@ -66,19 +69,26 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
 
   int sizeProtected;
 
+  final Random realSourceTimeSampler;
+
   public SegmentedLruPolicy(Admission admission, Config config) {
     this.policyStats = new PolicyStats(admission.format(name()));
     this.admittor = admission.from(config, policyStats);
     var settings = new SegmentedLruSettings(config);
 
-    this.headProtected = new Node();
-    this.headProbation = new Node();
+    double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
+    this.headProtected = new Node(itemSize);
+    this.headProbation = new Node(itemSize);
     this.data = new Long2ObjectOpenHashMap<>();
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     this.maxProtected = (int) (maximumSize * settings.percentProtected());
+
+    realSourceTimeSampler = new Random(Consts.REAL_SEED);
   }
 
-  /** Returns all variations of this policy based on the configuration parameters. */
+  /**
+   * Returns all variations of this policy based on the configuration parameters.
+   */
   public static Set<Policy> policies(Config config) {
     var settings = new BasicSettings(config);
     return settings.admission().stream().map(admission ->
@@ -115,12 +125,17 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
       node.appendToTail(headProtected);
     }
     policyStats.recordHit();
+    policyStats.addLatency(TimeCalculations.calculateTransmissionTime(node.size, Consts.BANDWIDTH));
   }
 
   private void onMiss(long key) {
-    var node = new Node(key);
+    var node = new Node(key, Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
     data.put(key, node);
     policyStats.recordMiss();
+    double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+    policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
+    policyStats.addDelay(realSourceProcessingTime);
+
     node.appendToTail(headProbation);
     node.type = QueueType.PROBATION;
     evict(node);
@@ -129,8 +144,8 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
   private void evict(Node candidate) {
     if (data.size() > maximumSize) {
       Node victim = (maxProtected == 0)
-          ? headProtected.next // degrade to LRU
-          : headProbation.next;
+        ? headProtected.next // degrade to LRU
+        : headProbation.next;
       policyStats.recordEviction();
 
       boolean admit = admittor.admit(candidate.key, victim.key);
@@ -159,24 +174,29 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
 
   static final class Node {
     final long key;
+    final double size;
 
     Node prev;
     Node next;
     QueueType type;
 
-    Node() {
+    Node(double size) {
       this.key = Long.MIN_VALUE;
       this.prev = this;
       this.next = this;
+      this.size = size;
     }
 
-    Node(long key) {
+    Node(long key, double size) {
       this.key = key;
       this.prev = UNLINKED;
       this.next = UNLINKED;
+      this.size = size;
     }
 
-    /** Appends the node to the tail of the list. */
+    /**
+     * Appends the node to the tail of the list.
+     */
     public void appendToTail(Node head) {
       Node tail = head.prev;
       head.prev = this;
@@ -185,7 +205,9 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
       prev = tail;
     }
 
-    /** Moves the node to the tail. */
+    /**
+     * Moves the node to the tail.
+     */
     public void moveToTail(Node head) {
       // unlink
       prev.next = next;
@@ -198,7 +220,9 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
       prev.next = this;
     }
 
-    /** Removes the node from the list. */
+    /**
+     * Removes the node from the list.
+     */
     public void remove() {
       prev.next = next;
       next.prev = prev;
@@ -208,9 +232,9 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
-          .add("key", key)
-          .add("type", type)
-          .toString();
+        .add("key", key)
+        .add("type", type)
+        .toString();
     }
   }
 
