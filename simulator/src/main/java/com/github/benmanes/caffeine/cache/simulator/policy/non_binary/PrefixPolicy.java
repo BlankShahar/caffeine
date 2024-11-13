@@ -23,7 +23,7 @@ public final class PrefixPolicy implements Policy {
 
   public PrefixPolicy(Config config) {
     var settings = new BasicSettings(config);
-    this.policyStats = new PolicyStats("non-binary.Prefix");
+    this.policyStats = new PolicyStats(name());
 
     this.data = new Long2ObjectOpenHashMap<>();
 
@@ -85,18 +85,15 @@ public final class PrefixPolicy implements Policy {
         break;
       }
 
-      // Chunk newChunk = new Chunk(prefix);
       if (currentCacheSize < maximumCacheSize) {
         // insert if there's enough space in the cache
-        prefix.insertChunk();
+        insertChunkToPrefix(prefix);
       } else { // cache's full
-        // if exists, evict a victim chunk victim from the cache
+        // if exists, evict a victim (last) chunk from a victim prefix from the cache
         Prefix victim = findVictim(prefix);
         if (victim == null) {
           // no suitable victim found and the cache is full - stop inserting
-          if (prefix.chunksAmount < idealChunksAmount) {
-            policyStats.addMisses(idealChunksAmount - prefix.chunksAmount);
-          }
+          policyStats.addMisses(Math.max(0, idealChunksAmount - prefix.chunksAmount));
           break;
         }
         removeChunkFromPrefix(victim);
@@ -105,11 +102,11 @@ public final class PrefixPolicy implements Policy {
     }
   }
 
-  private void removeChunkFromPrefix(Prefix victimPrefix) {
-    victimPrefix.removeChunk();
+  private void removeChunkFromPrefix(Prefix prefix) {
+    prefix.removeChunk();
     currentCacheSize--;
-    if (victimPrefix.chunksAmount == 0) {
-      data.remove(victimPrefix.itemKey);
+    if (prefix.chunksAmount == 0) {
+      data.remove(prefix.itemKey);
     }
     policyStats.recordOperation();
     policyStats.recordEviction();
@@ -198,28 +195,28 @@ public final class PrefixPolicy implements Policy {
     // calculate the benefit of inserting a new chunk to its prefix
     // D_i[r] = T[s] - (|P_i[r]| + 1) / B
     // Benefit = F_i * (D_i[r+1] - D_i[r])
-    // double newDelay = TimeCalculations.calculateNonBinaryLatency(approximatedSourceDelay, chunk.fatherPrefix.size() + 1, Consts.BANDWIDTH);
-    // return 1 / Math.pow(newDelay, 2) * chunk.fatherPrefix.frequency;
+    double newDelay = TimeCalculations.calculateDelay(approximatedSourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB() + Consts.CHUNK_SIZE, Consts.BANDWIDTH);
+    return 1 / Math.pow(newDelay, 2) * prefix.frequency;
 
-    double currentDelay = calculateDelay(approximatedSourceDelay, prefix, Consts.BANDWIDTH);
-    double approximatedNextSampleSourceDelay = TimeCalculations.getNextSourceProcessingTime(approximatedSampler);
-    double newDelay = TimeCalculations.calculateDelay(approximatedNextSampleSourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB() + Consts.CHUNK_SIZE, Consts.BANDWIDTH);
-    double deltaDelay = newDelay - currentDelay;
-    return prefix.frequency * deltaDelay;
+//    double currentDelay = calculateDelay(approximatedSourceDelay, prefix, Consts.BANDWIDTH);
+//    double approximatedNextSampleSourceDelay = TimeCalculations.getNextSourceProcessingTime(approximatedSampler);
+//    double newDelay = TimeCalculations.calculateDelay(approximatedNextSampleSourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB() + Consts.CHUNK_SIZE, Consts.BANDWIDTH);
+//    double deltaDelay = newDelay - currentDelay;
+//    return prefix.frequency * deltaDelay;
   }
 
   private double evictionCost(Prefix prefix, double approximatedSourceDelay) {
     // calculate the cost of inserting a new chunk to its prefix
     // D_i[r] = T[s] - (|P_i[r]| + 1) / B
     // Cost = F_i * (D_i[r] - D_i[r+1])
-    // double newDelay = TimeCalculations.calculateNonBinaryLatency(approximatedSourceDelay, chunk.fatherPrefix.size() - 1, Consts.BANDWIDTH);
-    // return 1 / Math.pow(newDelay, 2) * chunk.fatherPrefix.frequency;
+    double newDelay = TimeCalculations.calculateDelay(approximatedSourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB() - Consts.CHUNK_SIZE, Consts.BANDWIDTH);
+    return 1 / Math.pow(newDelay, 2) * prefix.frequency;
 
-    double currentDelay = calculateDelay(approximatedSourceDelay, prefix, Consts.BANDWIDTH);
-    double approximatedNextSampleSourceDelay = TimeCalculations.getNextSourceProcessingTime(approximatedSampler);
-    double newDelay = TimeCalculations.calculateDelay(approximatedNextSampleSourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB() - Consts.CHUNK_SIZE, Consts.BANDWIDTH);
-    double deltaDelay = currentDelay - newDelay;
-    return prefix.frequency * deltaDelay;
+//    double currentDelay = calculateDelay(approximatedSourceDelay, prefix, Consts.BANDWIDTH);
+//    double approximatedNextSampleSourceDelay = TimeCalculations.getNextSourceProcessingTime(approximatedSampler);
+//    double newDelay = TimeCalculations.calculateDelay(approximatedNextSampleSourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB() - Consts.CHUNK_SIZE, Consts.BANDWIDTH);
+//    double deltaDelay = currentDelay - newDelay;
+//    return prefix.frequency * deltaDelay;
   }
 
   @Override
