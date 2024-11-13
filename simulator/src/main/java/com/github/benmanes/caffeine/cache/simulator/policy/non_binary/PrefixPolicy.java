@@ -95,7 +95,7 @@ public final class PrefixPolicy implements Policy {
         if (victim == null) {
           // no suitable victim found and the cache is full - stop inserting
           if (prefix.chunksAmount < idealChunksAmount) {
-            policyStats.addRejections(idealChunksAmount - prefix.chunksAmount);
+            policyStats.addMisses(idealChunksAmount - prefix.chunksAmount);
           }
           break;
         }
