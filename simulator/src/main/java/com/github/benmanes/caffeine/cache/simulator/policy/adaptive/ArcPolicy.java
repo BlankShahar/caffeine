@@ -19,6 +19,7 @@ import static com.google.common.base.Preconditions.checkState;
 
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
@@ -31,6 +32,7 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
+import java.util.HashMap;
 import java.util.Random;
 
 /**
@@ -77,7 +79,8 @@ public final class ArcPolicy implements KeyOnlyPolicy {
   private int sizeB2;
   private int p;
 
-  private final Random realSourceTimeSampler;
+  private final Random sourcePicker;
+  private final HashMap<Long, Source> itemToSource;
 
   public ArcPolicy(Config config) {
     var settings = new BasicSettings(config);
@@ -89,12 +92,19 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     this.headB1 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
     this.headB2 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
 
-    realSourceTimeSampler = new Random(Consts.REAL_SEED);
+    sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
+    itemToSource = new HashMap<>();
   }
 
   @Override
   public void record(long key) {
     policyStats.recordOperation();
+
+    if (!itemToSource.containsKey(key)) {
+      Source source = Consts.REAL_SOURCES.get(sourcePicker.nextInt(Consts.REAL_SOURCES.size()));
+      itemToSource.put(key, source);
+    }
+
     Node node = data.get(key);
     if (node == null) {
       onMiss(key);
@@ -137,7 +147,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT2);
 
     policyStats.recordMiss();
-    double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+    double realSourceProcessingTime = itemToSource.get(node.key).getNextProcessingTime();
     policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
     policyStats.addDelay(realSourceProcessingTime);
   }
@@ -157,7 +167,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT2);
 
     policyStats.recordMiss();
-    double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+    double realSourceProcessingTime = itemToSource.get(node.key).getNextProcessingTime();
     policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
     policyStats.addDelay(realSourceProcessingTime);
   }
@@ -206,7 +216,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT1);
 
     policyStats.recordMiss();
-    double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+    double realSourceProcessingTime = itemToSource.get(key).getNextProcessingTime();
     policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
     policyStats.addDelay(realSourceProcessingTime);
   }
