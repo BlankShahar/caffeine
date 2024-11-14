@@ -55,8 +55,9 @@ public final class PrefixPolicy implements Policy {
       onRequest(existing);
     } else {
       // prefix missing (full miss)
-      Source realSource = Consts.REAL_SOURCES.get(sourcePicker.nextInt(Consts.REAL_SOURCES.size()));
-      Source approximatedSource = Consts.APPROXIMATED_SOURCES.get(sourcePicker.nextInt(Consts.APPROXIMATED_SOURCES.size()));
+      int sourceKey = sourcePicker.nextInt(Consts.REAL_SOURCES.size());
+      Source realSource = Consts.REAL_SOURCES.get(sourceKey);
+      Source approximatedSource = Consts.APPROXIMATED_SOURCES.get(sourceKey);
       var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, realSource, approximatedSource);
       onRequest(newPrefix);
     }
@@ -90,7 +91,7 @@ public final class PrefixPolicy implements Policy {
     double realSourceDelay = old.realSource.getNextProcessingTime();
     // The ideal prefix size - the size that gives "no delay"/"all the item is cached" illusion
     double realIdealSize = Math.min(old.fullItemSizeInMB(), (calculateDelay(realSourceDelay, old, Consts.BANDWIDTH) * Consts.BANDWIDTH));
-    long realIdealChunksAmount = Math.round(realIdealSize / Consts.CHUNK_SIZE);
+    long realIdealChunksAmount = (long) Math.ceil(realIdealSize / Consts.CHUNK_SIZE);
 
     // Chunk Hit Rate
     policyStats.addHits(old.chunksAmount);
