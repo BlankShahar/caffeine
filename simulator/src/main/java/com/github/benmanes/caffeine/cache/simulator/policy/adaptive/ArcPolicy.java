@@ -101,7 +101,8 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     policyStats.recordOperation();
 
     if (!itemToSource.containsKey(key)) {
-      Source source = Consts.REAL_SOURCES.get(sourcePicker.nextInt(Consts.REAL_SOURCES.size()));
+      int sourceKey = sourcePicker.nextInt(Consts.REAL_SOURCES.size());
+      Source source = Consts.REAL_SOURCES.get(sourceKey);
       itemToSource.put(key, source);
     }
 

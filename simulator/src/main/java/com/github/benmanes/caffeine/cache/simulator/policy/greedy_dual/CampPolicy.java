@@ -22,9 +22,11 @@ import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Random;
 import java.util.TreeSet;
+import java.util.HashMap;
 
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
@@ -64,7 +66,8 @@ public final class CampPolicy implements Policy {
   private long requestCount;
   private int size;
 
-  private final Random realSourceTimeSampler;
+  private final Random sourcePicker;
+  private final HashMap<Long, Source> itemToSource;
 
   public CampPolicy(Config config) {
     var settings = new CampSettings(config);
@@ -78,19 +81,26 @@ public final class CampPolicy implements Policy {
     this.sentinelMapping = new Int2ObjectOpenHashMap<>();
     this.bitMask = Integer.MAX_VALUE >> (Integer.SIZE - 1 - precision);
 
-    realSourceTimeSampler = new Random(Consts.REAL_SEED);
+    sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
+    itemToSource = new HashMap<>();
   }
 
   @Override
   public void record(AccessEvent event) {
-    var node = data.get(event.key());
+    long key = event.key();
+    var node = data.get(key);
     requestCount++;
 
+    if (!itemToSource.containsKey(key)) {
+      int sourceKey = sourcePicker.nextInt(Consts.REAL_SOURCES.size());
+      Source source = Consts.REAL_SOURCES.get(sourceKey);
+      itemToSource.put(event.key(), source);
+    }
     double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     if (node == null) {
       policyStats.recordWeightedMiss(event.weight());
 
-      double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+      double realSourceProcessingTime = itemToSource.get(key).getNextProcessingTime();
       policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
       policyStats.addDelay(realSourceProcessingTime);
 

@@ -17,6 +17,7 @@ package com.github.benmanes.caffeine.cache.simulator.policy.opt;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 
+import java.util.HashMap;
 import java.util.Random;
 import java.util.Set;
 
@@ -27,6 +28,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.google.common.primitives.Ints;
 import com.typesafe.config.Config;
 
@@ -45,17 +47,19 @@ public final class UnboundedPolicy implements Policy {
   private final PolicyStats policyStats;
   private final LongSet data;
 
-  private final Random realSourceTimeSampler;
+  private final Random sourcePicker;
+  private final HashMap<Long, Source> itemToSource;
 
   public UnboundedPolicy(Config config, Set<Characteristic> characteristics) {
     var settings = new BasicSettings(config);
     int initialSize = characteristics.contains(WEIGHTED)
-        ? LongOpenHashSet.DEFAULT_INITIAL_SIZE
-        : Ints.saturatedCast(settings.maximumSize());
+      ? LongOpenHashSet.DEFAULT_INITIAL_SIZE
+      : Ints.saturatedCast(settings.maximumSize());
     data = new LongOpenHashSet(initialSize);
     policyStats = new PolicyStats(name());
 
-    realSourceTimeSampler = new Random(Consts.REAL_SEED);
+    sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
+    itemToSource = new HashMap<>();
   }
 
   @Override
@@ -66,12 +70,19 @@ public final class UnboundedPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     policyStats.recordOperation();
+    long key = event.key();
+
+    if (!itemToSource.containsKey(key)) {
+      int sourceKey = sourcePicker.nextInt(Consts.REAL_SOURCES.size());
+      Source source = Consts.REAL_SOURCES.get(sourceKey);
+      itemToSource.put(event.key(), source);
+    }
 
     double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
-    if (data.add(event.key())) {
+    if (data.add(key)) {
       policyStats.recordWeightedMiss(event.weight());
 
-      double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+      double realSourceProcessingTime = itemToSource.get(key).getNextProcessingTime();
       policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
       policyStats.addDelay(realSourceProcessingTime);
     } else {
