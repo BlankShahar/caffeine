@@ -10,7 +10,13 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import javax.annotation.Nullable;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Queue;
+import java.util.Random;
+import java.util.Comparator;
+
 
 @Policy.PolicySpec(name = "non-binary.Prefix")
 public final class PrefixPolicy implements Policy {
@@ -26,7 +32,7 @@ public final class PrefixPolicy implements Policy {
     this.policyStats = new PolicyStats(name());
 
     this.data = new Long2ObjectOpenHashMap<>();
-    this.requests = new LinkedList<>();
+    this.requests = new ArrayDeque<>();
 
     // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
     // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
@@ -243,13 +249,16 @@ public final class PrefixPolicy implements Policy {
 //    );
 //    return 1 / Math.pow(newDelay, 2) * prefix.frequency();
 
+    double currentApproximatedDelay = prefix.approximatedSource.getNextProcessingTime();
+    double nextApproximatedDelay = prefix.approximatedSource.getNextProcessingTime(); // TODO: This makes the program real slow, needs fixing
+
     double currentDelay = calculateDelay(
-      prefix.approximatedSource.getNextProcessingTime(),
+      currentApproximatedDelay,
       prefix,
       Consts.BANDWIDTH
     );
     double newDelay = TimeCalculations.calculateDelay(
-      prefix.approximatedSource.getNextProcessingTime(), // TODO: This next (getNextProcessingTime) makes the program real slow, needs fixing
+      nextApproximatedDelay,
       prefix.fullItemSizeInMB(),
       prefix.sizeInMB() - Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
