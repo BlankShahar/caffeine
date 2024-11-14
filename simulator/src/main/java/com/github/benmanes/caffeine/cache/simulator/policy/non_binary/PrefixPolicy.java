@@ -15,7 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 import java.util.Random;
-import java.util.Comparator;
+import java.util.HashMap;
 
 
 @Policy.PolicySpec(name = "non-binary.Prefix")
@@ -66,7 +66,8 @@ public final class PrefixPolicy implements Policy {
     recordRequestStatistics(prefix);
     handleRequestsFrequency(prefix);
     insertChunks(prefix);
-    if (prefix.chunksAmount > 0) {
+
+    if (!data.containsKey(prefix.itemKey)) {
       data.put(prefix.itemKey, prefix);
       policyStats.recordOperation();
     }
@@ -132,9 +133,6 @@ public final class PrefixPolicy implements Policy {
   private void removeChunkFromPrefix(Prefix prefix) {
     prefix.removeChunk();
     currentCacheSize--;
-    if (prefix.chunksAmount == 0) {
-      data.remove(prefix.itemKey);
-    }
     policyStats.recordOperation();
     policyStats.recordEviction();
   }
@@ -152,33 +150,67 @@ public final class PrefixPolicy implements Policy {
    */
   @Nullable
   private Prefix findVictim(Prefix competitor) {
-    List<Prefix> suitableVictims = findSuitableVictims(competitor);
-    return getLowestEvictionCostChunk(suitableVictims);
+    HashMap<Source, Double> currentApproximatedProcessingTimes = TimeCalculations.getNextProcessingTimes(Consts.APPROXIMATED_SOURCES);
+    HashMap<Source, Double> nextApproximatedProcessingTimes = TimeCalculations.getNextProcessingTimes(Consts.APPROXIMATED_SOURCES);
+    List<Prefix> suitableVictims = findSuitableVictims(competitor, currentApproximatedProcessingTimes, nextApproximatedProcessingTimes);
+    return getLowestEvictionCostChunk(suitableVictims, currentApproximatedProcessingTimes, nextApproximatedProcessingTimes);
   }
 
   @Nullable
-  private Prefix getLowestEvictionCostChunk(List<Prefix> possibleVictims) {
+  private Prefix getLowestEvictionCostChunk(
+    List<Prefix> possibleVictims,
+    HashMap<Source, Double> currentApproximatedProcessingTimes,
+    HashMap<Source, Double> nextApproximatedProcessingTimes
+  ) {
     policyStats.recordOperation();
     // TODO: implement as min heap instead to improve runtime
-    return possibleVictims.stream()
-      .min(Comparator.comparingDouble(PrefixPolicy::evictionCost))
-      .orElse(null);
+    Prefix victim = null;
+    double minCost = Double.MAX_VALUE;
+
+    for (Prefix candidate : possibleVictims) {
+      double candidateCost = evictionCost(
+        candidate,
+        currentApproximatedProcessingTimes.get(candidate.approximatedSource),
+        nextApproximatedProcessingTimes.get(candidate.approximatedSource)
+      );
+      if (candidateCost < minCost) {
+        minCost = candidateCost;
+        victim = candidate;
+      }
+    }
+    return victim;
   }
+
 
   /**
    * @param competitor the prefix of the new chunk to be inserted
    * @return list of possible victims that can be evicted -
    * those that have a lower eviction benefit than the new chunk insertion benefit
    */
-  private List<Prefix> findSuitableVictims(Prefix competitor) {
+  private List<Prefix> findSuitableVictims(
+    Prefix competitor,
+    HashMap<Source, Double> currentApproximatedProcessingTimes,
+    HashMap<Source, Double> nextApproximatedProcessingTimes
+  ) {
     policyStats.recordOperation();
 
+    double competitorInsertionBenefit = insertionBenefit(
+      competitor,
+      currentApproximatedProcessingTimes.get(competitor.approximatedSource),
+      nextApproximatedProcessingTimes.get(competitor.approximatedSource)
+    );
+
     ArrayList<Prefix> possibleVictims = new ArrayList<>();
-    double competitorInsertionBenefit = insertionBenefit(competitor);
     for (Prefix candidate : data.values()) {
+      double candidateEvictionCost = evictionCost(
+        candidate,
+        currentApproximatedProcessingTimes.get(candidate.approximatedSource),
+        nextApproximatedProcessingTimes.get(candidate.approximatedSource)
+      );
       if (
-        candidate.itemKey != competitor.itemKey &&
-          competitorInsertionBenefit >= evictionCost(candidate)
+        candidate.chunksAmount > 0 &&
+          candidate.itemKey != competitor.itemKey &&
+          competitorInsertionBenefit >= candidateEvictionCost
       ) {
         possibleVictims.add(candidate);
       }
@@ -210,25 +242,22 @@ public final class PrefixPolicy implements Policy {
     return TimeCalculations.calculateNonBinaryLatency(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), bandwidth);
   }
 
-  private static double insertionBenefit(Prefix prefix) {
+  private static double insertionBenefit(
+    Prefix prefix,
+    double currentApproximatedSourceDelay,
+    double nextApproximatedSourceDelay
+  ) {
     // calculate the benefit of inserting a new chunk to its prefix
     // D_i[r] = T[s] - (|P_i[r]| + 1) / B
     // Benefit = F_i * (D_i[r+1] - D_i[r])
-//    double newDelay = TimeCalculations.calculateDelay(
-//      prefix.approximatedSource.getNextProcessingTime(),
-//      prefix.fullItemSizeInMB(),
-//      prefix.sizeInMB() + Consts.CHUNK_SIZE,
-//      Consts.BANDWIDTH
-//    );
-//    return 1 / Math.pow(newDelay, 2) * prefix.frequency();
 
     double currentDelay = calculateDelay(
-      prefix.approximatedSource.getNextProcessingTime(),
+      currentApproximatedSourceDelay,
       prefix,
       Consts.BANDWIDTH
     );
     double newDelay = TimeCalculations.calculateDelay(
-      prefix.approximatedSource.getNextProcessingTime(),
+      nextApproximatedSourceDelay,
       prefix.fullItemSizeInMB(),
       prefix.sizeInMB() + Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
@@ -237,28 +266,22 @@ public final class PrefixPolicy implements Policy {
     return prefix.frequency() * deltaDelay;
   }
 
-  private static double evictionCost(Prefix prefix) {
+  private static double evictionCost(
+    Prefix prefix,
+    double currentApproximatedSourceDelay,
+    double nextApproximatedSourceDelay
+  ) {
     // calculate the cost of inserting a new chunk to its prefix
     // D_i[r] = T[s] - (|P_i[r]| + 1) / B
     // Cost = F_i * (D_i[r] - D_i[r+1])
-//    double newDelay = TimeCalculations.calculateDelay(
-//      prefix.approximatedSource.getNextProcessingTime(),
-//      prefix.fullItemSizeInMB(),
-//      prefix.sizeInMB() - Consts.CHUNK_SIZE,
-//      Consts.BANDWIDTH
-//    );
-//    return 1 / Math.pow(newDelay, 2) * prefix.frequency();
-
-    double currentApproximatedDelay = prefix.approximatedSource.getNextProcessingTime();
-    double nextApproximatedDelay = prefix.approximatedSource.getNextProcessingTime(); // TODO: This makes the program real slow, needs fixing
 
     double currentDelay = calculateDelay(
-      currentApproximatedDelay,
+      currentApproximatedSourceDelay,
       prefix,
       Consts.BANDWIDTH
     );
     double newDelay = TimeCalculations.calculateDelay(
-      nextApproximatedDelay,
+      nextApproximatedSourceDelay, //prefix.approximatedSource.getNextProcessingTime(),
       prefix.fullItemSizeInMB(),
       prefix.sizeInMB() - Consts.CHUNK_SIZE,
       Consts.BANDWIDTH

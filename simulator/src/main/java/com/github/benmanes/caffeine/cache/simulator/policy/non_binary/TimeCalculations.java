@@ -1,5 +1,9 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.non_binary;
 
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
+
+import java.util.HashMap;
+import java.util.List;
 import java.util.Random;
 
 public final class TimeCalculations {
@@ -41,5 +45,13 @@ public final class TimeCalculations {
 
   public static double getNextSourceProcessingTime(Random random) {
     return Consts.MEAN_PROCESSING_TIME + Consts.STANDARD_DEVIATION_PROCESSING_TIME * random.nextGaussian();
+  }
+
+  public static HashMap<Source, Double> getNextProcessingTimes(List<Source> sources) {
+    HashMap<Source, Double> nextProcessingTimes = new HashMap<>();
+    for (Source source : sources) {
+      nextProcessingTimes.put(source, source.getNextProcessingTime());
+    }
+    return nextProcessingTimes;
   }
 }
