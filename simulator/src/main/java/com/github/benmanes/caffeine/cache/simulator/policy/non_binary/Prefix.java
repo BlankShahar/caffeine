@@ -5,7 +5,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.So
 public class Prefix {
   final long itemKey, fullItemChunksAmount;
   long chunksAmount;
-  long frequency;
+  long requestsCountInPeriod;
   Source realSource, approximatedSource;
 
   public Prefix(long itemKey, long fullItemChunksAmount, Source realSource, Source ApproximatedSource) {
@@ -13,8 +13,12 @@ public class Prefix {
     this.fullItemChunksAmount = fullItemChunksAmount;
     this.realSource = realSource;
     this.approximatedSource = ApproximatedSource;
-    this.frequency = 0;
+    this.requestsCountInPeriod = 0;
     this.chunksAmount = 0;
+  }
+
+  public double frequency() {
+    return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
   }
 
   public void insertChunk() {

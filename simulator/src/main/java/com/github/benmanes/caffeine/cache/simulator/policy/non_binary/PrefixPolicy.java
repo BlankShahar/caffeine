@@ -10,14 +10,12 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import javax.annotation.Nullable;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 @Policy.PolicySpec(name = "non-binary.Prefix")
 public final class PrefixPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
+  final Queue<Long> requests;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
   final PolicyStats policyStats;
@@ -28,6 +26,7 @@ public final class PrefixPolicy implements Policy {
     this.policyStats = new PolicyStats(name());
 
     this.data = new Long2ObjectOpenHashMap<>();
+    this.requests = new LinkedList<>();
 
     // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
     // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
@@ -47,29 +46,41 @@ public final class PrefixPolicy implements Policy {
 
     if (existing != null) {
       // prefix exist (partial hit)
-      onRequest(existing, itemKey);
+      onRequest(existing);
     } else {
       // prefix missing (full miss)
       Source realSource = Consts.REAL_SOURCES.get(sourcePicker.nextInt(Consts.REAL_SOURCES.size()));
       Source approximatedSource = Consts.APPROXIMATED_SOURCES.get(sourcePicker.nextInt(Consts.APPROXIMATED_SOURCES.size()));
       var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, realSource, approximatedSource);
-      onRequest(newPrefix, itemKey);
+      onRequest(newPrefix);
     }
   }
 
-  private void onRequest(Prefix prefix, long itemKey) {
+  private void onRequest(Prefix prefix) {
     recordRequestStatistics(prefix);
-    prefix.frequency++; // TODO: add time interval/period/window logic
-
+    handleRequestsFrequency(prefix);
     insertChunks(prefix);
     if (prefix.chunksAmount > 0) {
-      data.put(itemKey, prefix);
+      data.put(prefix.itemKey, prefix);
       policyStats.recordOperation();
     }
   }
 
+  private void handleRequestsFrequency(Prefix prefix) {
+    prefix.requestsCountInPeriod++;
+
+    requests.add(prefix.itemKey);
+    if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
+      long lastRequestItemKey = requests.remove();
+      var lastRequestedPrefix = data.getOrDefault(lastRequestItemKey, null);
+      if (lastRequestedPrefix != null) {
+        lastRequestedPrefix.requestsCountInPeriod--;
+      }
+    }
+  }
+
   private void recordRequestStatistics(Prefix old) {
-    double realSourceDelay = TimeCalculations.getNextSourceProcessingTime(sourcePicker);
+    double realSourceDelay = old.realSource.getNextProcessingTime();
     // The ideal prefix size - the size that gives "no delay"/"all the item is cached" illusion
     double realIdealSize = Math.min(old.fullItemSizeInMB(), (calculateDelay(realSourceDelay, old, Consts.BANDWIDTH) * Consts.BANDWIDTH));
     long realIdealChunksAmount = Math.round(realIdealSize / Consts.CHUNK_SIZE);
@@ -203,12 +214,21 @@ public final class PrefixPolicy implements Policy {
 //      prefix.sizeInMB() + Consts.CHUNK_SIZE,
 //      Consts.BANDWIDTH
 //    );
-//    return 1 / Math.pow(newDelay, 2) * prefix.frequency;
+//    return 1 / Math.pow(newDelay, 2) * prefix.frequency();
 
-    double currentDelay = calculateDelay(prefix.approximatedSource.getNextProcessingTime(), prefix, Consts.BANDWIDTH);
-    double newDelay = TimeCalculations.calculateDelay(prefix.approximatedSource.getNextProcessingTime(), prefix.fullItemSizeInMB(), prefix.sizeInMB() + Consts.CHUNK_SIZE, Consts.BANDWIDTH);
+    double currentDelay = calculateDelay(
+      prefix.approximatedSource.getNextProcessingTime(),
+      prefix,
+      Consts.BANDWIDTH
+    );
+    double newDelay = TimeCalculations.calculateDelay(
+      prefix.approximatedSource.getNextProcessingTime(),
+      prefix.fullItemSizeInMB(),
+      prefix.sizeInMB() + Consts.CHUNK_SIZE,
+      Consts.BANDWIDTH
+    );
     double deltaDelay = newDelay - currentDelay;
-    return prefix.frequency * deltaDelay;
+    return prefix.frequency() * deltaDelay;
   }
 
   private static double evictionCost(Prefix prefix) {
@@ -221,13 +241,21 @@ public final class PrefixPolicy implements Policy {
 //      prefix.sizeInMB() - Consts.CHUNK_SIZE,
 //      Consts.BANDWIDTH
 //    );
-//    return 1 / Math.pow(newDelay, 2) * prefix.frequency;
+//    return 1 / Math.pow(newDelay, 2) * prefix.frequency();
 
-    double currentDelay = calculateDelay(prefix.approximatedSource.getNextProcessingTime(), prefix, Consts.BANDWIDTH);
-    // TODO: This next (getNextProcessingTime) makes the program real slow, needs fixing
-    double newDelay = TimeCalculations.calculateDelay(prefix.approximatedSource.getNextProcessingTime(), prefix.fullItemSizeInMB(), prefix.sizeInMB() - Consts.CHUNK_SIZE, Consts.BANDWIDTH);
+    double currentDelay = calculateDelay(
+      prefix.approximatedSource.getNextProcessingTime(),
+      prefix,
+      Consts.BANDWIDTH
+    );
+    double newDelay = TimeCalculations.calculateDelay(
+      prefix.approximatedSource.getNextProcessingTime(), // TODO: This next (getNextProcessingTime) makes the program real slow, needs fixing
+      prefix.fullItemSizeInMB(),
+      prefix.sizeInMB() - Consts.CHUNK_SIZE,
+      Consts.BANDWIDTH
+    );
     double deltaDelay = currentDelay - newDelay;
-    return prefix.frequency * deltaDelay;
+    return prefix.frequency() * deltaDelay;
   }
 
   @Override
