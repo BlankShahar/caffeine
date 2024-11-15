@@ -17,6 +17,7 @@ package com.github.benmanes.caffeine.cache.simulator.policy.linked;
 
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
+import java.util.HashMap;
 import java.util.Random;
 import java.util.Set;
 
@@ -29,6 +30,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 
@@ -69,7 +71,8 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
 
   int sizeProtected;
 
-  final Random realSourceTimeSampler;
+  private final Random sourcePicker;
+  private final HashMap<Long, Source> itemToSource;
 
   public SegmentedLruPolicy(Admission admission, Config config) {
     this.policyStats = new PolicyStats(admission.format(name()));
@@ -83,7 +86,8 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     this.maxProtected = (int) (maximumSize * settings.percentProtected());
 
-    realSourceTimeSampler = new Random(Consts.REAL_SEED);
+    sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
+    itemToSource = new HashMap<>();
   }
 
   /**
@@ -101,6 +105,13 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
     policyStats.recordOperation();
     Node node = data.get(key);
     admittor.record(key);
+
+    if (!itemToSource.containsKey(key)) {
+      int sourceKey = sourcePicker.nextInt(Consts.REAL_SOURCES.size());
+      Source source = Consts.REAL_SOURCES.get(sourceKey);
+      itemToSource.put(key, source);
+    }
+
     if (node == null) {
       onMiss(key);
     } else {
@@ -132,7 +143,7 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
     var node = new Node(key, Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
     data.put(key, node);
     policyStats.recordMiss();
-    double realSourceProcessingTime = TimeCalculations.getNextSourceProcessingTime(realSourceTimeSampler);
+    double realSourceProcessingTime = itemToSource.get(key).getNextProcessingTime();
     policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
     policyStats.addDelay(realSourceProcessingTime);
 
