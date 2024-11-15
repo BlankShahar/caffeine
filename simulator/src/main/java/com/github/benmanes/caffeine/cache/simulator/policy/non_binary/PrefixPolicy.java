@@ -47,12 +47,12 @@ public final class PrefixPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     long itemKey = event.key();
-    var existing = data.getOrDefault(itemKey, null);
+    var existingPrefix = data.getOrDefault(itemKey, null);
     policyStats.recordOperation();
 
-    if (existing != null) {
+    if (existingPrefix != null) {
       // prefix exist (partial hit)
-      onRequest(existing);
+      onRequest(existingPrefix);
     } else {
       // prefix missing (full miss)
       int sourceKey = sourcePicker.nextInt(Consts.REAL_SOURCES.size());
@@ -70,7 +70,6 @@ public final class PrefixPolicy implements Policy {
 
     if (!data.containsKey(prefix.itemKey)) {
       data.put(prefix.itemKey, prefix);
-      policyStats.recordOperation();
     }
   }
 
@@ -99,7 +98,7 @@ public final class PrefixPolicy implements Policy {
 
     // Total (real) delay and latency
     double delay = calculateDelay(realSourceDelay, old, Consts.BANDWIDTH);
-    policyStats.addDelay(Math.max(0, delay));
+    policyStats.addDelay(delay);
     double latency = calculateLatency(realSourceDelay, old, Consts.BANDWIDTH);
     policyStats.addLatency(latency);
   }
@@ -282,7 +281,7 @@ public final class PrefixPolicy implements Policy {
       Consts.BANDWIDTH
     );
     double newDelay = TimeCalculations.calculateDelay(
-      nextApproximatedSourceDelay, //prefix.approximatedSource.getNextProcessingTime(),
+      nextApproximatedSourceDelay,
       prefix.fullItemSizeInMB(),
       prefix.sizeInMB() - Consts.CHUNK_SIZE,
       Consts.BANDWIDTH

@@ -77,7 +77,7 @@ public final class CarPolicy implements KeyOnlyPolicy {
     this.data = new Long2ObjectOpenHashMap<>();
 
     this.itemToSource = new HashMap<>();
-    sourcePicker = new Random(Consts.REAL_SEED);
+    sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
     double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     this.headT1 = new Node(itemSize);
     this.headT2 = new Node(itemSize);

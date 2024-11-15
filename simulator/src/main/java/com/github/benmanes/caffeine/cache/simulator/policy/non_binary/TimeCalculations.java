@@ -43,10 +43,6 @@ public final class TimeCalculations {
     return size / bandwidth;
   }
 
-  public static double getNextSourceProcessingTime(Random random) {
-    return Consts.MEAN_PROCESSING_TIME + Consts.STANDARD_DEVIATION_PROCESSING_TIME * random.nextGaussian();
-  }
-
   public static HashMap<Source, Double> getNextProcessingTimes(List<Source> sources) {
     HashMap<Source, Double> nextProcessingTimes = new HashMap<>();
     for (Source source : sources) {

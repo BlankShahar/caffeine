@@ -9,13 +9,10 @@ import java.util.Arrays;
 public final class Consts {
   public static final long ITEM_CHUNKS_AMOUNT = 1024;
   public static final double CHUNK_SIZE = 0.001; // in MB (1 KB)
-  public static final long BANDWIDTH = 1250; // in MBps
-  public static final long REQUESTS_FREQUENCY_PERIOD = 1000;
+  public static final long BANDWIDTH = 1000; // in MBps
+  public static final long REQUESTS_FREQUENCY_PERIOD = Integer.MAX_VALUE - 1;
 
-  public static final double MEAN_PROCESSING_TIME = 0.2; // average delay in seconds (e.g., 200 ms)
-  public static final double STANDARD_DEVIATION_PROCESSING_TIME = 0.05; // standard deviation in seconds (e.g., 50 ms)
-
-  public static final int REAL_SEED = 1337, SOURCE_PICKER_SEED = 1234;
+  public static final int SOURCE_PICKER_SEED = 1234;
 
   public static final ArrayList<Source> APPROXIMATED_SOURCES = new ArrayList<>(
     Arrays.asList(
@@ -25,7 +22,7 @@ public final class Consts {
     )
   );
 
-  public static final ArrayList<Source> REAL_SOURCES  = new ArrayList<>(
+  public static final ArrayList<Source> REAL_SOURCES = new ArrayList<>(
     Arrays.asList(
       new NormalSource(0.22, 0.06, 1),   // Slightly higher mean and std deviation
       new NormalSource(0.28, 0.08, 2),   // Slightly lower mean and higher std deviation
