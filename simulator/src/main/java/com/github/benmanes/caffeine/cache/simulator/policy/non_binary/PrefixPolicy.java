@@ -80,6 +80,8 @@ public final class PrefixPolicy implements Policy {
     if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
       long lastRequestItemKey = requests.remove();
       var lastRequestedPrefix = data.getOrDefault(lastRequestItemKey, null);
+      policyStats.recordOperation();
+
       if (lastRequestedPrefix != null) {
         lastRequestedPrefix.requestsCountInPeriod--;
       }
@@ -89,7 +91,7 @@ public final class PrefixPolicy implements Policy {
   private void recordRequestStatistics(Prefix old) {
     double realSourceDelay = old.realSource.getNextProcessingTime();
     // The ideal prefix size - the size that gives "no delay"/"all the item is cached" illusion
-    double realIdealSize = Math.min(old.fullItemSizeInMB(), (calculateDelay(realSourceDelay, old, Consts.BANDWIDTH) * Consts.BANDWIDTH));
+    double realIdealSize = Math.min(old.fullItemSizeInMB(), realSourceDelay * Consts.BANDWIDTH);
     long realIdealChunksAmount = (long) Math.ceil(realIdealSize / Consts.CHUNK_SIZE);
 
     // Chunk Hit Rate
