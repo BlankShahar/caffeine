@@ -155,19 +155,18 @@ public final class PrefixPolicy implements Policy {
     HashMap<Source, Double> currentApproximatedProcessingTimes = TimeCalculations.getNextProcessingTimes(Consts.APPROXIMATED_SOURCES);
     HashMap<Source, Double> nextApproximatedProcessingTimes = TimeCalculations.getNextProcessingTimes(Consts.APPROXIMATED_SOURCES);
     List<Prefix> suitableVictims = findSuitableVictims(competitor, currentApproximatedProcessingTimes, nextApproximatedProcessingTimes);
-    return getLowestEvictionCostChunk(suitableVictims, currentApproximatedProcessingTimes, nextApproximatedProcessingTimes);
+    return getHighestEvictionCostChunk(suitableVictims, currentApproximatedProcessingTimes, nextApproximatedProcessingTimes);
   }
 
   @Nullable
-  private Prefix getLowestEvictionCostChunk(
+  private Prefix getHighestEvictionCostChunk(
     List<Prefix> possibleVictims,
     HashMap<Source, Double> currentApproximatedProcessingTimes,
     HashMap<Source, Double> nextApproximatedProcessingTimes
   ) {
     policyStats.recordOperation();
-    // TODO: implement as min heap instead to improve runtime
     Prefix victim = null;
-    double minCost = Double.MAX_VALUE;
+    double maxCost = Double.MIN_VALUE;
 
     for (Prefix candidate : possibleVictims) {
       double candidateCost = evictionCost(
@@ -175,8 +174,8 @@ public final class PrefixPolicy implements Policy {
         currentApproximatedProcessingTimes.get(candidate.approximatedSource),
         nextApproximatedProcessingTimes.get(candidate.approximatedSource)
       );
-      if (candidateCost < minCost) {
-        minCost = candidateCost;
+      if (candidateCost > maxCost) {
+        maxCost = candidateCost;
         victim = candidate;
       }
     }
@@ -212,7 +211,7 @@ public final class PrefixPolicy implements Policy {
       if (
         candidate.chunksAmount > 0 &&
           candidate.itemKey != competitor.itemKey &&
-          competitorInsertionBenefit >= candidateEvictionCost
+          competitorInsertionBenefit <= candidateEvictionCost
       ) {
         possibleVictims.add(candidate);
       }
