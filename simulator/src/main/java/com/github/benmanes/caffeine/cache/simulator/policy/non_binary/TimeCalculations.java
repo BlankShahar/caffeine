@@ -4,7 +4,6 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.So
 
 import java.util.HashMap;
 import java.util.List;
-import java.util.Random;
 
 public final class TimeCalculations {
   public static double calculateSourceLatency(double sourceDelay, double itemSize, long bandwidth) {
@@ -47,7 +46,7 @@ public final class TimeCalculations {
   public static HashMap<Source, Double> getNextProcessingTimes(List<Source> sources) {
     HashMap<Source, Double> nextProcessingTimes = new HashMap<>();
     for (Source source : sources) {
-      nextProcessingTimes.put(source, source.getNextProcessingTime());
+      nextProcessingTimes.put(source, source.sampleProcessingTime());
     }
     return nextProcessingTimes;
   }

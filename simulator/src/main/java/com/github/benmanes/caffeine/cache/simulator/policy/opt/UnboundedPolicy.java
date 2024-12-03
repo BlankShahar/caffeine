@@ -73,8 +73,8 @@ public final class UnboundedPolicy implements Policy {
     long key = event.key();
 
     if (!itemToSource.containsKey(key)) {
-      int sourceKey = sourcePicker.nextInt(Consts.REAL_SOURCES.size());
-      Source source = Consts.REAL_SOURCES.get(sourceKey);
+      int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
+      Source source = Consts.SOURCES.get(sourceKey);
       itemToSource.put(event.key(), source);
     }
 
@@ -82,7 +82,7 @@ public final class UnboundedPolicy implements Policy {
     if (data.add(key)) {
       policyStats.recordWeightedMiss(event.weight());
 
-      double realSourceProcessingTime = itemToSource.get(key).getNextProcessingTime();
+      double realSourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
       policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
       policyStats.addDelay(realSourceProcessingTime);
     } else {

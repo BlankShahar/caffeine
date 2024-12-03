@@ -89,7 +89,7 @@ public final class CarPolicy implements KeyOnlyPolicy {
   public void record(long key) {
     Node node = data.get(key);
     if (!itemToSource.containsKey(key)) {
-      Source source = Consts.REAL_SOURCES.get(sourcePicker.nextInt(Consts.REAL_SOURCES.size()));
+      Source source = Consts.SOURCES.get(sourcePicker.nextInt(Consts.SOURCES.size()));
       itemToSource.put(key, source);
     }
 
@@ -101,7 +101,7 @@ public final class CarPolicy implements KeyOnlyPolicy {
     } else {
       policyStats.recordMiss();
       double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
-      double realSourceProcessingTime = itemToSource.get(key).getNextProcessingTime();
+      double realSourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
       policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
       policyStats.addDelay(realSourceProcessingTime);
 

@@ -9,13 +9,9 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
-import javax.annotation.Nullable;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Queue;
 import java.util.Random;
-import java.util.HashMap;
 
 
 @Policy.PolicySpec(name = "non-binary.Prefix")
@@ -55,10 +51,9 @@ public final class PrefixPolicy implements Policy {
       onRequest(existingPrefix);
     } else {
       // prefix missing (full miss)
-      int sourceKey = sourcePicker.nextInt(Consts.REAL_SOURCES.size());
-      Source realSource = Consts.REAL_SOURCES.get(sourceKey);
-      Source approximatedSource = Consts.APPROXIMATED_SOURCES.get(sourceKey);
-      var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, realSource, approximatedSource);
+      int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
+      Source source = Consts.SOURCES.get(sourceKey);
+      var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, source);
       onRequest(newPrefix);
     }
   }
@@ -89,19 +84,19 @@ public final class PrefixPolicy implements Policy {
   }
 
   private void recordRequestStatistics(Prefix old) {
-    double realSourceDelay = old.realSource.getNextProcessingTime();
+    double sourceDelay = old.source.sampleProcessingTime();
     // The ideal prefix size - the size that gives "no delay"/"all the item is cached" illusion
-    double realIdealSize = Math.min(old.fullItemSizeInMB(), realSourceDelay * Consts.BANDWIDTH);
+    double realIdealSize = Math.min(old.fullItemSizeInMB(), sourceDelay * Consts.BANDWIDTH);
     long realIdealChunksAmount = (long) Math.ceil(realIdealSize / Consts.CHUNK_SIZE);
 
     // Chunk Hit Rate
     policyStats.addHits(old.chunksAmount);
     policyStats.addMisses(Math.max(0, realIdealChunksAmount - old.chunksAmount));
 
-    // Total (real) delay and latency
-    double delay = calculateDelay(realSourceDelay, old, Consts.BANDWIDTH);
+    // Total delay and latency
+    double delay = calculateDelay(sourceDelay, old);
     policyStats.addDelay(delay);
-    double latency = calculateLatency(realSourceDelay, old, Consts.BANDWIDTH);
+    double latency = calculateLatency(sourceDelay, old);
     policyStats.addLatency(latency);
   }
 
@@ -109,25 +104,20 @@ public final class PrefixPolicy implements Policy {
     // try to insert more chunks until we reach full size,
     //  or we stop due to not benefiting from it
 
-    while (true) {
-      if (prefix.isFull()) {
-        // if the item is fully cached, stop inserting more chunks of it
-        break;
-      }
+    // if the item is fully cached, stop inserting more chunks of it
+    while (!prefix.isFull()) {
+      insertChunkToPrefix(prefix);
 
-      if (currentCacheSize < maximumCacheSize) {
-        // insert if there's enough space in the cache
-        insertChunkToPrefix(prefix);
-      } else { // cache's full
+      if (currentCacheSize == maximumCacheSize + 1) { // cache's full+1 and someone needs to be evicted
         // if exists, evict a victim (last) chunk from a victim prefix from the cache
-        Prefix victim = findVictim(prefix);
-        if (victim == null) {
-          // no suitable victim found and the cache is full - stop inserting (reject all the rest)
-          policyStats.addRejections(Math.max(0, prefix.fullItemChunksAmount - prefix.chunksAmount));
+        Prefix victim = findVictim();
+        removeChunkFromPrefix(victim);
+
+        if (victim.itemKey == prefix.itemKey) {
+          // The victim became the prefix itself, so we stop benefiting from inserting more chunks to it
+          // So we stop here
           break;
         }
-        removeChunkFromPrefix(victim);
-        insertChunkToPrefix(prefix);
       }
     }
   }
@@ -147,76 +137,30 @@ public final class PrefixPolicy implements Policy {
   }
 
   /**
-   * @param competitor the prefix of the new chunk to be inserted
    * @return the victim chunk to be evicted, or null if no suitable one is found
    */
-  @Nullable
-  private Prefix findVictim(Prefix competitor) {
-    HashMap<Source, Double> currentApproximatedProcessingTimes = TimeCalculations.getNextProcessingTimes(Consts.APPROXIMATED_SOURCES);
-    HashMap<Source, Double> nextApproximatedProcessingTimes = TimeCalculations.getNextProcessingTimes(Consts.APPROXIMATED_SOURCES);
-    List<Prefix> suitableVictims = findSuitableVictims(competitor, currentApproximatedProcessingTimes, nextApproximatedProcessingTimes);
-    return getHighestEvictionCostChunk(suitableVictims, currentApproximatedProcessingTimes, nextApproximatedProcessingTimes);
+  private Prefix findVictim() {
+    return getLowestScorePrefix();
   }
 
-  @Nullable
-  private Prefix getHighestEvictionCostChunk(
-    List<Prefix> possibleVictims,
-    HashMap<Source, Double> currentApproximatedProcessingTimes,
-    HashMap<Source, Double> nextApproximatedProcessingTimes
-  ) {
+  private Prefix getLowestScorePrefix() {
     policyStats.recordOperation();
     Prefix victim = null;
-    double maxCost = Double.MIN_VALUE;
+    double minCost = Double.MAX_VALUE;
 
-    for (Prefix candidate : possibleVictims) {
-      double candidateCost = evictionCost(
-        candidate,
-        currentApproximatedProcessingTimes.get(candidate.approximatedSource),
-        nextApproximatedProcessingTimes.get(candidate.approximatedSource)
-      );
-      if (candidateCost > maxCost) {
-        maxCost = candidateCost;
+    for (Prefix candidate : data.values()) {
+      if (candidate.chunksAmount == 0) {
+        continue;
+      }
+
+      double score = insertionScore(candidate);
+      if (score < minCost) {
+        minCost = score;
         victim = candidate;
       }
     }
+    assert victim != null;
     return victim;
-  }
-
-
-  /**
-   * @param competitor the prefix of the new chunk to be inserted
-   * @return list of possible victims that can be evicted -
-   * those that have a lower eviction benefit than the new chunk insertion benefit
-   */
-  private List<Prefix> findSuitableVictims(
-    Prefix competitor,
-    HashMap<Source, Double> currentApproximatedProcessingTimes,
-    HashMap<Source, Double> nextApproximatedProcessingTimes
-  ) {
-    policyStats.recordOperation();
-
-    double competitorInsertionBenefit = insertionBenefit(
-      competitor,
-      currentApproximatedProcessingTimes.get(competitor.approximatedSource),
-      nextApproximatedProcessingTimes.get(competitor.approximatedSource)
-    );
-
-    ArrayList<Prefix> possibleVictims = new ArrayList<>();
-    for (Prefix candidate : data.values()) {
-      double candidateEvictionCost = evictionCost(
-        candidate,
-        currentApproximatedProcessingTimes.get(candidate.approximatedSource),
-        nextApproximatedProcessingTimes.get(candidate.approximatedSource)
-      );
-      if (
-        candidate.chunksAmount > 0 &&
-          candidate.itemKey != competitor.itemKey &&
-          competitorInsertionBenefit <= candidateEvictionCost
-      ) {
-        possibleVictims.add(candidate);
-      }
-    }
-    return possibleVictims;
   }
 
   /**
@@ -224,11 +168,15 @@ public final class PrefixPolicy implements Policy {
    *
    * @param sourceDelay in seconds
    * @param prefix      the prefix of the item
-   * @param bandwidth   in MBps
    * @return the delay in seconds
    */
-  private static double calculateDelay(double sourceDelay, Prefix prefix, long bandwidth) {
-    return TimeCalculations.calculateDelay(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), bandwidth);
+  private static double calculateDelay(double sourceDelay, Prefix prefix) {
+    return TimeCalculations.calculateDelay(
+      sourceDelay,
+      prefix.fullItemSizeInMB(),
+      prefix.sizeInMB(),
+      Consts.BANDWIDTH
+    );
   }
 
   /**
@@ -236,59 +184,25 @@ public final class PrefixPolicy implements Policy {
    *
    * @param sourceDelay in s
    * @param prefix      the prefix of the item
-   * @param bandwidth   in MBps
    * @return the latency in seconds
    */
-  private static double calculateLatency(double sourceDelay, Prefix prefix, long bandwidth) {
-    return TimeCalculations.calculateNonBinaryLatency(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), bandwidth);
+  private static double calculateLatency(double sourceDelay, Prefix prefix) {
+    return TimeCalculations.calculateNonBinaryLatency(
+      sourceDelay,
+      prefix.fullItemSizeInMB(),
+      prefix.sizeInMB(),
+      Consts.BANDWIDTH
+    );
   }
 
-  private static double insertionBenefit(
-    Prefix prefix,
-    double currentApproximatedSourceDelay,
-    double nextApproximatedSourceDelay
-  ) {
-    // calculate the benefit of inserting a new chunk to its prefix
-    // D_i[r] = T[s] - (|P_i[r]| + 1) / B
-    // Benefit = F_i * (D_i[r+1] - D_i[r])
-
-    double currentDelay = calculateDelay(
-      currentApproximatedSourceDelay,
-      prefix,
-      Consts.BANDWIDTH
-    );
-    double newDelay = TimeCalculations.calculateDelay(
-      nextApproximatedSourceDelay,
-      prefix.fullItemSizeInMB(),
-      prefix.sizeInMB() + Consts.CHUNK_SIZE,
-      Consts.BANDWIDTH
-    );
-    double deltaDelay = newDelay - currentDelay;
-    return prefix.frequency() * deltaDelay;
-  }
-
-  private static double evictionCost(
-    Prefix prefix,
-    double currentApproximatedSourceDelay,
-    double nextApproximatedSourceDelay
-  ) {
-    // calculate the cost of inserting a new chunk to its prefix
-    // D_i[r] = T[s] - (|P_i[r]| + 1) / B
-    // Cost = F_i * (D_i[r] - D_i[r+1])
-
-    double currentDelay = calculateDelay(
-      currentApproximatedSourceDelay,
-      prefix,
-      Consts.BANDWIDTH
-    );
-    double newDelay = TimeCalculations.calculateDelay(
-      nextApproximatedSourceDelay,
-      prefix.fullItemSizeInMB(),
+  private static double insertionScore(Prefix prefix) {
+    // Idea - frequency times the probability of experiencing delay without the last chunk
+    // TODO: multiple by `prefix.source.sampleProcessingTime`
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       prefix.sizeInMB() - Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    double deltaDelay = currentDelay - newDelay;
-    return prefix.frequency() * deltaDelay;
+    return prefix.frequency() * (1 - prefix.source.calculateCDF(prefixTransmissionTime));
   }
 
   @Override

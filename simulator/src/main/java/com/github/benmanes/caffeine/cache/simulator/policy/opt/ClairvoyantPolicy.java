@@ -113,8 +113,8 @@ public final class ClairvoyantPolicy implements Policy {
     }
 
     if (!itemToSource.containsKey(key)) {
-      int sourceKey = sourcePicker.nextInt(Consts.REAL_SOURCES.size());
-      Source source = Consts.REAL_SOURCES.get(sourceKey);
+      int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
+      Source source = Consts.SOURCES.get(sourceKey);
       itemToSource.put(key, source);
     }
     double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
@@ -127,7 +127,7 @@ public final class ClairvoyantPolicy implements Policy {
       policyStats.recordMiss();
       policyStats.recordMissPenalty(missPenalty);
 
-      double realSourceProcessingTime = itemToSource.get(key).getNextProcessingTime();
+      double realSourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
       policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
       policyStats.addDelay(realSourceProcessingTime);
 

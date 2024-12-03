@@ -107,8 +107,8 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
     admittor.record(key);
 
     if (!itemToSource.containsKey(key)) {
-      int sourceKey = sourcePicker.nextInt(Consts.REAL_SOURCES.size());
-      Source source = Consts.REAL_SOURCES.get(sourceKey);
+      int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
+      Source source = Consts.SOURCES.get(sourceKey);
       itemToSource.put(key, source);
     }
 
@@ -143,7 +143,7 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
     var node = new Node(key, Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
     data.put(key, node);
     policyStats.recordMiss();
-    double realSourceProcessingTime = itemToSource.get(key).getNextProcessingTime();
+    double realSourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
     policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
     policyStats.addDelay(realSourceProcessingTime);
 

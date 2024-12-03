@@ -6,13 +6,12 @@ public class Prefix {
   final long itemKey, fullItemChunksAmount;
   long chunksAmount;
   long requestsCountInPeriod;
-  Source realSource, approximatedSource;
+  Source source;
 
-  public Prefix(long itemKey, long fullItemChunksAmount, Source realSource, Source ApproximatedSource) {
+  public Prefix(long itemKey, long fullItemChunksAmount, Source source) {
     this.itemKey = itemKey;
     this.fullItemChunksAmount = fullItemChunksAmount;
-    this.realSource = realSource;
-    this.approximatedSource = ApproximatedSource;
+    this.source = source;
     this.requestsCountInPeriod = 0;
     this.chunksAmount = 0;
   }
