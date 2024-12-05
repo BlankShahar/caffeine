@@ -100,9 +100,9 @@ public final class CampPolicy implements Policy {
     if (node == null) {
       policyStats.recordWeightedMiss(event.weight());
 
-      double realSourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
-      policyStats.addDelay(realSourceProcessingTime);
+      double sourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, itemSize, Consts.BANDWIDTH));
+      policyStats.addDelay(sourceProcessingTime);
 
       onMiss(event);
     } else {

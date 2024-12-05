@@ -101,9 +101,9 @@ public final class CarPolicy implements KeyOnlyPolicy {
     } else {
       policyStats.recordMiss();
       double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
-      double realSourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
-      policyStats.addDelay(realSourceProcessingTime);
+      double sourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, itemSize, Consts.BANDWIDTH));
+      policyStats.addDelay(sourceProcessingTime);
 
       onMiss(key, node);
     }

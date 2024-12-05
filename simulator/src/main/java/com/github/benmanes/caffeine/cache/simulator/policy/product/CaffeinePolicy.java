@@ -82,9 +82,9 @@ public final class CaffeinePolicy implements Policy {
       cache.put(event.key(), event);
       policyStats.recordWeightedMiss(event.weight());
 
-      double realSourceProcessingTime = itemToSource.get(event.key()).sampleProcessingTime();
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
-      policyStats.addDelay(realSourceProcessingTime);
+      double sourceProcessingTime = itemToSource.get(event.key()).sampleProcessingTime();
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, itemSize, Consts.BANDWIDTH));
+      policyStats.addDelay(sourceProcessingTime);
     } else {
       policyStats.recordWeightedHit(event.weight());
       if (event.weight() != value.weight()) {

@@ -78,9 +78,9 @@ public final class GuavaPolicy implements Policy {
       cache.put(event.key(), event);
       policyStats.recordWeightedMiss(event.weight());
 
-      double realSourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
-      policyStats.addDelay(realSourceProcessingTime);
+      double sourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, itemSize, Consts.BANDWIDTH));
+      policyStats.addDelay(sourceProcessingTime);
     } else {
       policyStats.recordWeightedHit(event.weight());
       policyStats.addLatency(TimeCalculations.calculateTransmissionTime(itemSize, Consts.BANDWIDTH));

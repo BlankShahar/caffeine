@@ -148,9 +148,9 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT2);
 
     policyStats.recordMiss();
-    double realSourceProcessingTime = itemToSource.get(node.key).sampleProcessingTime();
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
-    policyStats.addDelay(realSourceProcessingTime);
+    double sourceProcessingTime = itemToSource.get(node.key).sampleProcessingTime();
+    policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, node.size, Consts.BANDWIDTH));
+    policyStats.addDelay(sourceProcessingTime);
   }
 
   private void onHitB2(Node node) {
@@ -168,9 +168,9 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT2);
 
     policyStats.recordMiss();
-    double realSourceProcessingTime = itemToSource.get(node.key).sampleProcessingTime();
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
-    policyStats.addDelay(realSourceProcessingTime);
+    double sourceProcessingTime = itemToSource.get(node.key).sampleProcessingTime();
+    policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, node.size, Consts.BANDWIDTH));
+    policyStats.addDelay(sourceProcessingTime);
   }
 
   private void onMiss(long key) {
@@ -217,9 +217,9 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT1);
 
     policyStats.recordMiss();
-    double realSourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
-    policyStats.addDelay(realSourceProcessingTime);
+    double sourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
+    policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, node.size, Consts.BANDWIDTH));
+    policyStats.addDelay(sourceProcessingTime);
   }
 
   /**

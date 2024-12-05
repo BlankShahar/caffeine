@@ -7,12 +7,14 @@ public class NormalSource implements Source {
   private final Random random;
   private final double mean, standardDeviation; // in ms
   private final HashMap<Double, Double> zTable;
+  private final HashMap<Double, Double> resultsCache;
 
   public NormalSource(double mean, double standardDeviation, long key) {
     this.random = new Random(key);
     this.mean = mean;
     this.standardDeviation = standardDeviation;
     this.zTable = new HashMap<>();
+    this.resultsCache = new HashMap<>();
     initiateZTable();
   }
 
@@ -426,6 +428,9 @@ public class NormalSource implements Source {
 
   @Override
   public double calculateCDF(double time) {
+    if (resultsCache.containsKey(time)) {
+      return resultsCache.get(time);
+    }
     double x = (time - mean) / standardDeviation;
     double roundedX = Math.round(x * 100) / 100.0;
     if (roundedX < -3.99) {
@@ -433,7 +438,9 @@ public class NormalSource implements Source {
     } else if (roundedX > 3.99) {
       return 1;
     }
-    return phi(roundedX);
+    double result = phi(roundedX);
+    resultsCache.put(time, result);
+    return result;
   }
 
   private double phi(double x) {

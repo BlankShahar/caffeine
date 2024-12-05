@@ -143,9 +143,9 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
     var node = new Node(key, Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
     data.put(key, node);
     policyStats.recordMiss();
-    double realSourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, node.size, Consts.BANDWIDTH));
-    policyStats.addDelay(realSourceProcessingTime);
+    double sourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
+    policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, node.size, Consts.BANDWIDTH));
+    policyStats.addDelay(sourceProcessingTime);
 
     node.appendToTail(headProbation);
     node.type = QueueType.PROBATION;

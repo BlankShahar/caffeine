@@ -33,7 +33,7 @@ public final class PrefixPolicy implements Policy {
     // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
     // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
     //  which we assume is ~1024 chunks per item.
-    // If we assume that a chunk size is 1KB, then an average item size is 1MB.
+    // If we assume that a chunk size is 4KB, then an average item size is 4MB.
     this.maximumCacheSize = settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
     this.currentCacheSize = 0;
 
@@ -86,12 +86,12 @@ public final class PrefixPolicy implements Policy {
   private void recordRequestStatistics(Prefix old) {
     double sourceDelay = old.source.sampleProcessingTime();
     // The ideal prefix size - the size that gives "no delay"/"all the item is cached" illusion
-    double realIdealSize = Math.min(old.fullItemSizeInMB(), sourceDelay * Consts.BANDWIDTH);
-    long realIdealChunksAmount = (long) Math.ceil(realIdealSize / Consts.CHUNK_SIZE);
+    double idealSize = Math.min(old.fullItemSizeInMB(), sourceDelay * Consts.BANDWIDTH);
+    long idealChunksAmount = (long) Math.ceil(idealSize / Consts.CHUNK_SIZE);
 
     // Chunk Hit Rate
     policyStats.addHits(old.chunksAmount);
-    policyStats.addMisses(Math.max(0, realIdealChunksAmount - old.chunksAmount));
+    policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
 
     // Total delay and latency
     double delay = calculateDelay(sourceDelay, old);

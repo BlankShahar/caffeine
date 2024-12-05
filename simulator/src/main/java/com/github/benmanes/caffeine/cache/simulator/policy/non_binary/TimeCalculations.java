@@ -1,9 +1,5 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.non_binary;
 
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
-
-import java.util.HashMap;
-import java.util.List;
 
 public final class TimeCalculations {
   public static double calculateSourceLatency(double sourceDelay, double itemSize, long bandwidth) {
@@ -41,13 +37,5 @@ public final class TimeCalculations {
 
   public static double calculateTransmissionTime(double size, long bandwidth) {
     return size / bandwidth;
-  }
-
-  public static HashMap<Source, Double> getNextProcessingTimes(List<Source> sources) {
-    HashMap<Source, Double> nextProcessingTimes = new HashMap<>();
-    for (Source source : sources) {
-      nextProcessingTimes.put(source, source.sampleProcessingTime());
-    }
-    return nextProcessingTimes;
   }
 }

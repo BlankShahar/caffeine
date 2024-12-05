@@ -127,9 +127,9 @@ public final class ClairvoyantPolicy implements Policy {
       policyStats.recordMiss();
       policyStats.recordMissPenalty(missPenalty);
 
-      double realSourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(realSourceProcessingTime, itemSize, Consts.BANDWIDTH));
-      policyStats.addDelay(realSourceProcessingTime);
+      double sourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, itemSize, Consts.BANDWIDTH));
+      policyStats.addDelay(sourceProcessingTime);
 
       if (data.size() > maximumSize) {
         evict();
