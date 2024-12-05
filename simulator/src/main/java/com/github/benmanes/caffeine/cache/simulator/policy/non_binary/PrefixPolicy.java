@@ -153,7 +153,7 @@ public final class PrefixPolicy implements Policy {
         continue;
       }
 
-      double score = insertionScore(candidate);
+      double score = candidate.insertionScore();
       if (score < minCost) {
         minCost = score;
         victim = candidate;
@@ -193,16 +193,6 @@ public final class PrefixPolicy implements Policy {
       prefix.sizeInMB(),
       Consts.BANDWIDTH
     );
-  }
-
-  private static double insertionScore(Prefix prefix) {
-    // Idea - frequency times the probability of experiencing delay without the last chunk
-    // TODO: multiple by `prefix.source.sampleProcessingTime`
-    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-      prefix.sizeInMB() - Consts.CHUNK_SIZE,
-      Consts.BANDWIDTH
-    );
-    return prefix.frequency() * (1 - prefix.source.calculateCDF(prefixTransmissionTime));
   }
 
   @Override

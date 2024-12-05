@@ -2,7 +2,7 @@ package com.github.benmanes.caffeine.cache.simulator.policy.non_binary;
 
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 
-public class Prefix {
+public class Prefix implements Comparable<Prefix> {
   final long itemKey, fullItemChunksAmount;
   long chunksAmount;
   long requestsCountInPeriod;
@@ -14,6 +14,20 @@ public class Prefix {
     this.source = source;
     this.requestsCountInPeriod = 0;
     this.chunksAmount = 0;
+  }
+
+  public double insertionScore() {
+    // Idea - frequency times the probability of experiencing delay without the last chunk
+    // TODO: multiple by `prefix.source.sampleProcessingTime`
+    if (chunksAmount == 0) {
+      return frequency();
+    }
+
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      sizeInMB() - Consts.CHUNK_SIZE,
+      Consts.BANDWIDTH
+    );
+    return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double frequency() {
@@ -40,5 +54,10 @@ public class Prefix {
 
   public boolean isFull() {
     return chunksAmount == fullItemChunksAmount;
+  }
+
+  @Override
+  public int compareTo(Prefix other) {
+    return Double.compare(this.insertionScore(), other.insertionScore());
   }
 }
