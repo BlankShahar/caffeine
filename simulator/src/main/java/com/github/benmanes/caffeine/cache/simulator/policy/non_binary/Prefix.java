@@ -58,6 +58,6 @@ public class Prefix implements Comparable<Prefix> {
 
   @Override
   public int compareTo(Prefix other) {
-    return Double.compare(this.insertionScore(), other.insertionScore());
+    return (int) Math.round(this.insertionScore() - other.insertionScore());
   }
 }

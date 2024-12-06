@@ -22,6 +22,7 @@ public final class PrefixPolicy implements Policy {
   long currentCacheSize; // in chunks
   final PolicyStats policyStats;
   final Random sourcePicker;
+  final SearchableMinHeap<Long, Prefix> scoreMinHeap;
 
   public PrefixPolicy(Config config) {
     var settings = new BasicSettings(config);
@@ -29,6 +30,8 @@ public final class PrefixPolicy implements Policy {
 
     this.data = new Long2ObjectOpenHashMap<>();
     this.requests = new ArrayDeque<>();
+
+    this.scoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD, this::compare);
 
     // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
     // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
@@ -61,11 +64,11 @@ public final class PrefixPolicy implements Policy {
   private void onRequest(Prefix prefix) {
     recordRequestStatistics(prefix);
     handleRequestsFrequency(prefix);
-    insertChunks(prefix);
 
     if (!data.containsKey(prefix.itemKey)) {
       data.put(prefix.itemKey, prefix);
     }
+    insertChunks(prefix);
   }
 
   private void handleRequestsFrequency(Prefix prefix) {
@@ -125,6 +128,14 @@ public final class PrefixPolicy implements Policy {
   private void removeChunkFromPrefix(Prefix prefix) {
     prefix.removeChunk();
     currentCacheSize--;
+
+    if (scoreMinHeap.contains(prefix.itemKey)) {
+      scoreMinHeap.remove(prefix.itemKey);
+    }
+    if (prefix.chunksAmount > 0) {
+      scoreMinHeap.insert(prefix.itemKey, prefix);
+    }
+
     policyStats.recordOperation();
     policyStats.recordEviction();
   }
@@ -132,6 +143,12 @@ public final class PrefixPolicy implements Policy {
   private void insertChunkToPrefix(Prefix prefix) {
     prefix.insertChunk();
     currentCacheSize++;
+
+    if (scoreMinHeap.contains(prefix.itemKey)) {
+      scoreMinHeap.remove(prefix.itemKey);
+    }
+    scoreMinHeap.insert(prefix.itemKey, prefix);
+
     policyStats.recordOperation();
     policyStats.recordAdmission();
   }
@@ -140,27 +157,7 @@ public final class PrefixPolicy implements Policy {
    * @return the victim chunk to be evicted, or null if no suitable one is found
    */
   private Prefix findVictim() {
-    return getLowestScorePrefix();
-  }
-
-  private Prefix getLowestScorePrefix() {
-    policyStats.recordOperation();
-    Prefix victim = null;
-    double minCost = Double.MAX_VALUE;
-
-    for (Prefix candidate : data.values()) {
-      if (candidate.chunksAmount == 0) {
-        continue;
-      }
-
-      double score = candidate.insertionScore();
-      if (score < minCost) {
-        minCost = score;
-        victim = candidate;
-      }
-    }
-    assert victim != null;
-    return victim;
+    return scoreMinHeap.min().value();
   }
 
   /**
@@ -193,6 +190,12 @@ public final class PrefixPolicy implements Policy {
       prefix.sizeInMB(),
       Consts.BANDWIDTH
     );
+  }
+
+  public int compare(long prefixKey1, long prefixKey2) {
+    Prefix p1 = data.get(prefixKey1);
+    Prefix p2 = data.get(prefixKey2);
+    return p1.compareTo(p2);
   }
 
   @Override
