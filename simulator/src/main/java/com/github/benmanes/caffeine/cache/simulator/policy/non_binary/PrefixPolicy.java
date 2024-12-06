@@ -129,9 +129,7 @@ public final class PrefixPolicy implements Policy {
     prefix.removeChunk();
     currentCacheSize--;
 
-    if (scoreMinHeap.contains(prefix.itemKey)) {
-      scoreMinHeap.remove(prefix.itemKey);
-    }
+    scoreMinHeap.remove(prefix.itemKey);
     if (prefix.chunksAmount > 0) {
       scoreMinHeap.insert(prefix.itemKey, prefix);
     }
