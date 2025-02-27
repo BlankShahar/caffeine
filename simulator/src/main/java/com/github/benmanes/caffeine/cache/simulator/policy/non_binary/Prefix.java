@@ -16,18 +16,33 @@ public class Prefix implements Comparable<Prefix> {
     this.chunksAmount = 0;
   }
 
-  public double insertionScore() {
-    // Idea - frequency times the probability of experiencing delay without the last chunk
-    // TODO: multiple by `prefix.source.sampleProcessingTime`
+  public double lfu_score_after_insertion() {
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      sizeInMB() + Consts.CHUNK_SIZE,
+      Consts.BANDWIDTH
+    );
+    return frequency() * source.calculateCDF(prefixTransmissionTime);
+  }
+
+  public double lfu_score_after_eviction() {
     if (chunksAmount == 0) {
-      return frequency();
+      return 0;
     }
 
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB() - Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
+    return frequency() * source.calculateCDF(prefixTransmissionTime);
+  }
+
+  public double lfu_score() {
+    // Idea - frequency times the probability of experiencing delay without the last chunk
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      sizeInMB(),
+      Consts.BANDWIDTH
+    );
+    return frequency() * source.calculateCDF(prefixTransmissionTime);
   }
 
   public double frequency() {
@@ -58,6 +73,6 @@ public class Prefix implements Comparable<Prefix> {
 
   @Override
   public int compareTo(Prefix other) {
-    return (int) Math.round(this.insertionScore() - other.insertionScore());
+    return (int) Math.round(this.lfu_score() - other.lfu_score());
   }
 }
