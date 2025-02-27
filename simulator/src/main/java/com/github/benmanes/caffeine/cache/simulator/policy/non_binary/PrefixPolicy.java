@@ -18,6 +18,7 @@ import java.util.Random;
 public final class PrefixPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
+  static long currentTime;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
   final PolicyStats policyStats;
@@ -30,6 +31,7 @@ public final class PrefixPolicy implements Policy {
 
     this.data = new Long2ObjectOpenHashMap<>();
     this.requests = new ArrayDeque<>();
+    currentTime = 0;
 
     this.scoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD, this::compare);
 
@@ -48,15 +50,17 @@ public final class PrefixPolicy implements Policy {
     long itemKey = event.key();
     var existingPrefix = data.getOrDefault(itemKey, null);
     policyStats.recordOperation();
+    currentTime++;
 
     if (existingPrefix != null) {
       // prefix exist (partial hit)
+      existingPrefix.lastRequestTime = currentTime;
       onRequest(existingPrefix);
     } else {
       // prefix missing (full miss)
       // int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
       Source source = Consts.SOURCES.get(0);
-      var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, source);
+      var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, source, currentTime);
       onRequest(newPrefix);
     }
   }
@@ -110,8 +114,10 @@ public final class PrefixPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.lfu_score_after_insertion();
-      double sMinus = victim.lfu_score_after_eviction();
+//      double sPlus = prefix.lfu_score_after_insertion();
+//      double sMinus = victim.lfu_score_after_eviction();
+      double sPlus = prefix.lru_score_after_insertion();
+      double sMinus = victim.lru_score_after_eviction();
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;

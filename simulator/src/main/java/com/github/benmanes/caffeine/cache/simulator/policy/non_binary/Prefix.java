@@ -6,14 +6,25 @@ public class Prefix implements Comparable<Prefix> {
   final long itemKey, fullItemChunksAmount;
   long chunksAmount;
   long requestsCountInPeriod;
+  long lastRequestTime;
   Source source;
 
-  public Prefix(long itemKey, long fullItemChunksAmount, Source source) {
+  public Prefix(long itemKey, long fullItemChunksAmount, Source source, long currentTime) {
     this.itemKey = itemKey;
     this.fullItemChunksAmount = fullItemChunksAmount;
     this.source = source;
     this.requestsCountInPeriod = 0;
     this.chunksAmount = 0;
+    this.lastRequestTime = currentTime;
+  }
+
+  public double lfu_score() {
+    // Idea - frequency times the probability of not experiencing delay
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      sizeInMB(),
+      Consts.BANDWIDTH
+    );
+    return frequency() * source.calculateCDF(prefixTransmissionTime);
   }
 
   public double lfu_score_after_insertion() {
@@ -36,17 +47,41 @@ public class Prefix implements Comparable<Prefix> {
     return frequency() * source.calculateCDF(prefixTransmissionTime);
   }
 
-  public double lfu_score() {
-    // Idea - frequency times the probability of experiencing delay without the last chunk
+  public double lru_score() {
+    // Idea - frequency times the probability of not experiencing delay
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB(),
       Consts.BANDWIDTH
     );
-    return frequency() * source.calculateCDF(prefixTransmissionTime);
+    return recency(PrefixPolicy.currentTime) * source.calculateCDF(prefixTransmissionTime);
+  }
+
+  public double lru_score_after_insertion() {
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      sizeInMB() + Consts.CHUNK_SIZE,
+      Consts.BANDWIDTH
+    );
+    return recency(PrefixPolicy.currentTime) * source.calculateCDF(prefixTransmissionTime);
+  }
+
+  public double lru_score_after_eviction() {
+    if (chunksAmount == 0) {
+      return 0;
+    }
+
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      sizeInMB() - Consts.CHUNK_SIZE,
+      Consts.BANDWIDTH
+    );
+    return recency(PrefixPolicy.currentTime) * source.calculateCDF(prefixTransmissionTime);
   }
 
   public double frequency() {
     return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
+  }
+
+  public double recency(long currentTime) {
+    return (double) 1 / (currentTime - lastRequestTime + 1);
   }
 
   public void insertChunk() {
@@ -73,6 +108,15 @@ public class Prefix implements Comparable<Prefix> {
 
   @Override
   public int compareTo(Prefix other) {
+//    return LruCompareTo(other);
+    return LfuCompareTo(other);
+  }
+
+  public int LruCompareTo(Prefix other) {
+    return (int) Math.round(this.lru_score() - other.lru_score());
+  }
+
+  public int LfuCompareTo(Prefix other) {
     return (int) Math.round(this.lfu_score() - other.lfu_score());
   }
 }
