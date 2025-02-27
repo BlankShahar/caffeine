@@ -104,17 +104,14 @@ public final class PrefixPolicy implements Policy {
   }
 
   private void insertChunks(Prefix prefix) {
-    // try to insert more chunks until we reach full size,
-    //  or we stop due to not benefiting from it
-
-    // if the item is fully cached, stop inserting more chunks of it
-    while (!prefix.isFull()) {
+    while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
       insertChunkToPrefix(prefix);
+    }
 
-      if (currentCacheSize == maximumCacheSize + 1) { // cache's full+1 and someone needs to be evicted
-        // if exists, evict a victim (last) chunk from a victim prefix from the cache
-        Prefix victim = findVictim();
-        removeChunkFromPrefix(victim);
+    while (true) {
+      Prefix victim = findVictim();
+      double sPlus = prefix.lfu_score_after_insertion();
+      double sMinus = victim.lfu_score_after_eviction();
 
         if (victim.itemKey == prefix.itemKey) {
           // The victim became the prefix itself, so we stop benefiting from inserting more chunks to it
@@ -122,6 +119,12 @@ public final class PrefixPolicy implements Policy {
           break;
         }
       }
+      if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
+        break;
+      }
+
+      removeChunkFromPrefix(victim);
+      insertChunkToPrefix(prefix);
     }
   }
 
