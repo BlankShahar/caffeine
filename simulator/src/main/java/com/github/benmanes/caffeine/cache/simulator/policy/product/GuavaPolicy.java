@@ -69,8 +69,8 @@ public final class GuavaPolicy implements Policy {
     AccessEvent value = cache.getIfPresent(key);
     double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     if (!itemToSource.containsKey(key)) {
-      int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
-      Source source = Consts.SOURCES.get(sourceKey);
+      // int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
+      Source source = Consts.SOURCES.get(0);
       itemToSource.put(event.key(), source);
     }
 

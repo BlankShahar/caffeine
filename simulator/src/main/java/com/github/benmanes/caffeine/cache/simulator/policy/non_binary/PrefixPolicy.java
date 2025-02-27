@@ -54,8 +54,8 @@ public final class PrefixPolicy implements Policy {
       onRequest(existingPrefix);
     } else {
       // prefix missing (full miss)
-      int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
-      Source source = Consts.SOURCES.get(sourceKey);
+      // int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
+      Source source = Consts.SOURCES.get(0);
       var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, source);
       onRequest(newPrefix);
     }
@@ -113,12 +113,6 @@ public final class PrefixPolicy implements Policy {
       double sPlus = prefix.lfu_score_after_insertion();
       double sMinus = victim.lfu_score_after_eviction();
 
-        if (victim.itemKey == prefix.itemKey) {
-          // The victim became the prefix itself, so we stop benefiting from inserting more chunks to it
-          // So we stop here
-          break;
-        }
-      }
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;
       }

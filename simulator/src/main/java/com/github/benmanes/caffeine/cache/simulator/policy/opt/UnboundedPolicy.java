@@ -73,8 +73,8 @@ public final class UnboundedPolicy implements Policy {
     long key = event.key();
 
     if (!itemToSource.containsKey(key)) {
-      int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
-      Source source = Consts.SOURCES.get(sourceKey);
+      // int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
+      Source source = Consts.SOURCES.get(0);
       itemToSource.put(event.key(), source);
     }
 
