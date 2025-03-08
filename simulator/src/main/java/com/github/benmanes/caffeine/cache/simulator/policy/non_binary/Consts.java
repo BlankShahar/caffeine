@@ -2,6 +2,7 @@ package com.github.benmanes.caffeine.cache.simulator.policy.non_binary;
 
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
+import com.hazelcast.jet.datamodel.Tuple3;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,7 +14,6 @@ public final class Consts {
   public static final long REQUESTS_FREQUENCY_PERIOD = 10_000;
 
   public static final int SOURCE_PICKER_SEED = 1234;
-
 
   public static final ArrayList<Source> SOURCES = new ArrayList<>(
     Arrays.asList(

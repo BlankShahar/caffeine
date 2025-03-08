@@ -15,25 +15,23 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.adaptive;
 
-import static com.google.common.base.Preconditions.checkState;
-
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
-
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.HashMap;
-import java.util.Random;
+
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Adaptive Replacement Cache. This algorithm uses a queue for items that are seen once (T1), a
@@ -79,7 +77,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
   private int sizeB2;
   private int p;
 
-  private final Random sourcePicker;
+  private final Source source;
   private final HashMap<Long, Source> itemToSource;
 
   public ArcPolicy(Config config) {
@@ -92,7 +90,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     this.headB1 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
     this.headB2 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
 
-    sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
+    source = new NormalSource(0.2, 0.05, 1);
     itemToSource = new HashMap<>();
   }
 
@@ -101,8 +99,6 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     policyStats.recordOperation();
 
     if (!itemToSource.containsKey(key)) {
-      // int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
-      Source source = Consts.SOURCES.get(0);
       itemToSource.put(key, source);
     }
 

@@ -19,6 +19,7 @@ import static com.google.common.base.Preconditions.checkState;
 
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
@@ -67,7 +68,7 @@ public final class CarPolicy implements KeyOnlyPolicy {
   private int sizeB2;
   private int p;
 
-  private final Random sourcePicker;
+  private final Source source;
   private final HashMap<Long, Source> itemToSource;
 
   public CarPolicy(Config config) {
@@ -76,8 +77,9 @@ public final class CarPolicy implements KeyOnlyPolicy {
     this.policyStats = new PolicyStats(name());
     this.data = new Long2ObjectOpenHashMap<>();
 
+    source = new NormalSource(0.2, 0.05, 1);
     this.itemToSource = new HashMap<>();
-    sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
+
     double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     this.headT1 = new Node(itemSize);
     this.headT2 = new Node(itemSize);
@@ -89,7 +91,6 @@ public final class CarPolicy implements KeyOnlyPolicy {
   public void record(long key) {
     Node node = data.get(key);
     if (!itemToSource.containsKey(key)) {
-      Source source = Consts.SOURCES.get(sourcePicker.nextInt(Consts.SOURCES.size()));
       itemToSource.put(key, source);
     }
 

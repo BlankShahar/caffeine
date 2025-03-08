@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -11,21 +12,19 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import java.util.ArrayDeque;
 import java.util.Queue;
-import java.util.Random;
 
 
-@Policy.PolicySpec(name = "non-binary.Prefix")
-public final class PrefixPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.LfuPrefix")
+public final class LfuPrefixPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
   final PolicyStats policyStats;
-  final Random sourcePicker;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
 
-  public PrefixPolicy(Config config) {
+  public LfuPrefixPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -33,7 +32,7 @@ public final class PrefixPolicy implements Policy {
     this.requests = new ArrayDeque<>();
     currentTime = 0;
 
-    this.scoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD, this::compare);
+    this.scoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD, this::comparePrefixes);
 
     // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
     // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
@@ -41,8 +40,6 @@ public final class PrefixPolicy implements Policy {
     // If we assume that a chunk size is 4KB, then an average item size is 4MB.
     this.maximumCacheSize = settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
     this.currentCacheSize = 0;
-
-    this.sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
   }
 
   @Override
@@ -58,8 +55,7 @@ public final class PrefixPolicy implements Policy {
       onRequest(existingPrefix);
     } else {
       // prefix missing (full miss)
-      // int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
-      Source source = Consts.SOURCES.get(0);
+      Source source = new NormalSource(0.2, 0.05, 1);
       var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, source, currentTime);
       onRequest(newPrefix);
     }
@@ -114,10 +110,8 @@ public final class PrefixPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-//      double sPlus = prefix.lfu_score_after_insertion();
-//      double sMinus = victim.lfu_score_after_eviction();
-      double sPlus = prefix.lru_score_after_insertion();
-      double sMinus = victim.lru_score_after_eviction();
+      double sPlus = prefix.lfu_score_after_insertion();
+      double sMinus = victim.lfu_score_after_eviction();
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;
@@ -193,10 +187,10 @@ public final class PrefixPolicy implements Policy {
     );
   }
 
-  public int compare(long prefixKey1, long prefixKey2) {
+  public int comparePrefixes(long prefixKey1, long prefixKey2) {
     Prefix p1 = data.get(prefixKey1);
     Prefix p2 = data.get(prefixKey2);
-    return p1.compareTo(p2);
+    return p1.LfuCompareTo(p2);
   }
 
   @Override

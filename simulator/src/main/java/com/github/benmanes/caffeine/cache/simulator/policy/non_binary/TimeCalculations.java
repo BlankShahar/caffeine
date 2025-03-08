@@ -32,7 +32,7 @@ public final class TimeCalculations {
       // Even if the source delay is very big, if the whole item is cached, there will not be a request to source, therefore no delay.
       return 0;
     }
-    return sourceDelay - calculateTransmissionTime(prefixSize, bandwidth);
+    return Math.max(0, sourceDelay - calculateTransmissionTime(prefixSize, bandwidth));
   }
 
   public static double calculateTransmissionTime(double size, long bandwidth) {

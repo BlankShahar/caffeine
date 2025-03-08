@@ -4,13 +4,15 @@ import java.util.HashMap;
 import java.util.Random;
 
 public class NormalSource implements Source {
-  private final Random random;
+  private Random random;
+  private final long seed;
   private final double mean, standardDeviation; // in ms
   private final HashMap<Double, Double> zTable;
   private final HashMap<Double, Double> resultsCache;
 
   public NormalSource(double mean, double standardDeviation, long key) {
-    this.random = new Random(key);
+    this.seed = key;
+    this.random = new Random(seed);
     this.mean = mean;
     this.standardDeviation = standardDeviation;
     this.zTable = new HashMap<>();

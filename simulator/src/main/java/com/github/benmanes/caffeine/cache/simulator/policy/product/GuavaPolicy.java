@@ -15,12 +15,6 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.product;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
-
-import java.util.HashMap;
-import java.util.Random;
-import java.util.Set;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
@@ -28,10 +22,16 @@ import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.typesafe.config.Config;
+
+import java.util.HashMap;
+import java.util.Set;
+
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 
 /**
  * Guava cache implementation.
@@ -43,7 +43,7 @@ public final class GuavaPolicy implements Policy {
   private final Cache<Long, AccessEvent> cache;
   private final PolicyStats policyStats;
 
-  private final Random sourcePicker;
+  private final Source source;
   private final HashMap<Long, Source> itemToSource;
 
   public GuavaPolicy(Config config, Set<Characteristic> characteristics) {
@@ -59,7 +59,7 @@ public final class GuavaPolicy implements Policy {
     }
     cache = builder.build();
 
-    sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
+    source = new NormalSource(0.2, 0.05, 1);
     itemToSource = new HashMap<>();
   }
 
@@ -69,8 +69,6 @@ public final class GuavaPolicy implements Policy {
     AccessEvent value = cache.getIfPresent(key);
     double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     if (!itemToSource.containsKey(key)) {
-      // int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
-      Source source = Consts.SOURCES.get(0);
       itemToSource.put(event.key(), source);
     }
 

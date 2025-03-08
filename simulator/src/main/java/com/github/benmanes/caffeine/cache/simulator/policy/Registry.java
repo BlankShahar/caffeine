@@ -51,7 +51,8 @@ import com.github.benmanes.caffeine.cache.simulator.policy.linked.MultiQueuePoli
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.S4LruPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.SegmentedLruPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.SievePolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.PrefixPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.LfuPrefixPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.LruPrefixPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.UnboundedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.Cache2kPolicy;
@@ -238,7 +239,8 @@ public final class Registry {
   }
 
   private void registerNonBinary() {
-    register(PrefixPolicy.class, PrefixPolicy::new);
+    register(LruPrefixPolicy.class, LruPrefixPolicy::new);
+    register(LfuPrefixPolicy.class, LfuPrefixPolicy::new);
   }
 
   @AutoValue

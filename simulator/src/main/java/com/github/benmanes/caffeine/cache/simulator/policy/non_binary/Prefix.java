@@ -2,7 +2,7 @@ package com.github.benmanes.caffeine.cache.simulator.policy.non_binary;
 
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 
-public class Prefix implements Comparable<Prefix> {
+public class Prefix {
   final long itemKey, fullItemChunksAmount;
   long chunksAmount;
   long requestsCountInPeriod;
@@ -48,12 +48,12 @@ public class Prefix implements Comparable<Prefix> {
   }
 
   public double lru_score() {
-    // Idea - frequency times the probability of not experiencing delay
+    // Idea - recency times the probability of not experiencing delay
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB(),
       Consts.BANDWIDTH
     );
-    return recency(PrefixPolicy.currentTime) * source.calculateCDF(prefixTransmissionTime);
+    return recency(LruPrefixPolicy.currentTime) * source.calculateCDF(prefixTransmissionTime);
   }
 
   public double lru_score_after_insertion() {
@@ -61,7 +61,7 @@ public class Prefix implements Comparable<Prefix> {
       sizeInMB() + Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return recency(PrefixPolicy.currentTime) * source.calculateCDF(prefixTransmissionTime);
+    return recency(LruPrefixPolicy.currentTime) * source.calculateCDF(prefixTransmissionTime);
   }
 
   public double lru_score_after_eviction() {
@@ -73,7 +73,7 @@ public class Prefix implements Comparable<Prefix> {
       sizeInMB() - Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return recency(PrefixPolicy.currentTime) * source.calculateCDF(prefixTransmissionTime);
+    return recency(LruPrefixPolicy.currentTime) * source.calculateCDF(prefixTransmissionTime);
   }
 
   public double frequency() {
@@ -104,12 +104,6 @@ public class Prefix implements Comparable<Prefix> {
 
   public boolean isFull() {
     return chunksAmount == fullItemChunksAmount;
-  }
-
-  @Override
-  public int compareTo(Prefix other) {
-//    return LruCompareTo(other);
-    return LfuCompareTo(other);
   }
 
   public int LruCompareTo(Prefix other) {

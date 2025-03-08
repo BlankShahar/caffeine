@@ -15,11 +15,6 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.opt;
 
-import java.util.ArrayDeque;
-import java.util.HashMap;
-import java.util.Queue;
-import java.util.Random;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
@@ -27,9 +22,9 @@ import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
-
 import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;
 import it.unimi.dsi.fastutil.ints.IntPriorityQueue;
 import it.unimi.dsi.fastutil.ints.IntRBTreeSet;
@@ -37,6 +32,10 @@ import it.unimi.dsi.fastutil.ints.IntSortedSet;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
+
+import java.util.ArrayDeque;
+import java.util.HashMap;
+import java.util.Queue;
 
 /**
  * {@literal Bélády's} optimal page replacement policy. The upper bound of the hit rate is estimated
@@ -56,7 +55,7 @@ public final class ClairvoyantPolicy implements Policy {
   private int infiniteTimestamp;
   private int tick;
 
-  private final Random sourcePicker;
+  private final Source source;
   private final HashMap<Long, Source> itemToSource;
 
   public ClairvoyantPolicy(Config config) {
@@ -67,7 +66,7 @@ public final class ClairvoyantPolicy implements Policy {
     infiniteTimestamp = Integer.MAX_VALUE;
     data = new IntRBTreeSet();
 
-    sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
+    source = new NormalSource(0.2, 0.05, 1);
     itemToSource = new HashMap<>();
   }
 
@@ -98,7 +97,9 @@ public final class ClairvoyantPolicy implements Policy {
     policyStats.stopwatch().stop();
   }
 
-  /** Performs the cache operations for the given key. */
+  /**
+   * Performs the cache operations for the given key.
+   */
   private void process(long key, double hitPenalty, double missPenalty) {
     IntPriorityQueue times = accessTimes.get(key);
 
@@ -113,10 +114,9 @@ public final class ClairvoyantPolicy implements Policy {
     }
 
     if (!itemToSource.containsKey(key)) {
-      // int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
-      Source source = Consts.SOURCES.get(0);
       itemToSource.put(key, source);
     }
+
     double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     if (found) {
       policyStats.recordHit();
@@ -137,15 +137,20 @@ public final class ClairvoyantPolicy implements Policy {
     }
   }
 
-  /** Removes the entry whose next access is the farthest away into the future. */
+  /**
+   * Removes the entry whose next access is the farthest away into the future.
+   */
   private void evict() {
     data.remove(data.lastInt());
     policyStats.recordEviction();
   }
 
-  /** An optimized strategy for storing the event history. */
+  /**
+   * An optimized strategy for storing the event history.
+   */
   private interface Recorder {
     void add(AccessEvent event);
+
     void process();
   }
 
@@ -155,10 +160,14 @@ public final class ClairvoyantPolicy implements Policy {
     KeyOnlyRecorder() {
       future = new LongArrayFIFOQueue(maximumSize);
     }
-    @Override public void add(AccessEvent event) {
+
+    @Override
+    public void add(AccessEvent event) {
       future.enqueue(event.key());
     }
-    @Override public void process() {
+
+    @Override
+    public void process() {
       while (!future.isEmpty()) {
         ClairvoyantPolicy.this.process(future.dequeueLong(), 0.0, 0.0);
       }
@@ -171,10 +180,14 @@ public final class ClairvoyantPolicy implements Policy {
     EventRecorder() {
       future = new ArrayDeque<>(maximumSize);
     }
-    @Override public void add(AccessEvent event) {
+
+    @Override
+    public void add(AccessEvent event) {
       future.add(event);
     }
-    @Override public void process() {
+
+    @Override
+    public void process() {
       while (!future.isEmpty()) {
         AccessEvent event = future.poll();
         ClairvoyantPolicy.this.process(event.key(), event.hitPenalty(), event.missPenalty());

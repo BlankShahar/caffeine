@@ -25,12 +25,12 @@ import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.google.common.primitives.Ints;
 import com.typesafe.config.Config;
 
 import java.util.HashMap;
-import java.util.Random;
 import java.util.Set;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
@@ -45,7 +45,7 @@ public final class CaffeinePolicy implements Policy {
   private final Cache<Long, AccessEvent> cache;
   private final PolicyStats policyStats;
 
-  private final Random sourcePicker;
+  private final Source source;
   private final HashMap<Long, Source> itemToSource;
 
   public CaffeinePolicy(Config config, Set<Characteristic> characteristics) {
@@ -64,7 +64,7 @@ public final class CaffeinePolicy implements Policy {
     }
     cache = builder.build();
 
-    sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
+    source = new NormalSource(0.2, 0.05, 1);
     itemToSource = new HashMap<>();
   }
 
@@ -72,8 +72,6 @@ public final class CaffeinePolicy implements Policy {
   public void record(AccessEvent event) {
     double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     if (!itemToSource.containsKey(event.key())) {
-      // int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
-      Source source = Consts.SOURCES.get(0);
       itemToSource.put(event.key(), source);
     }
 

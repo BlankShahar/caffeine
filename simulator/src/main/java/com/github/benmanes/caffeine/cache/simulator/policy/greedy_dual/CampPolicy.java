@@ -15,32 +15,30 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
-import static com.google.common.base.Preconditions.checkState;
-
-import java.util.NavigableSet;
-import java.util.Objects;
-import java.util.Random;
-import java.util.TreeSet;
-import java.util.HashMap;
-
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
-
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import org.checkerframework.checker.nullness.qual.Nullable;
+
+import java.util.HashMap;
+import java.util.NavigableSet;
+import java.util.Objects;
+import java.util.TreeSet;
+
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * CAMP algorithm.
@@ -66,7 +64,7 @@ public final class CampPolicy implements Policy {
   private long requestCount;
   private int size;
 
-  private final Random sourcePicker;
+  private final Source source;
   private final HashMap<Long, Source> itemToSource;
 
   public CampPolicy(Config config) {
@@ -81,7 +79,7 @@ public final class CampPolicy implements Policy {
     this.sentinelMapping = new Int2ObjectOpenHashMap<>();
     this.bitMask = Integer.MAX_VALUE >> (Integer.SIZE - 1 - precision);
 
-    sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
+    source = new NormalSource(0.2, 0.05, 1);
     itemToSource = new HashMap<>();
   }
 
@@ -92,8 +90,6 @@ public final class CampPolicy implements Policy {
     requestCount++;
 
     if (!itemToSource.containsKey(key)) {
-      // int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
-      Source source = Consts.SOURCES.get(0);
       itemToSource.put(event.key(), source);
     }
     double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
@@ -145,8 +141,8 @@ public final class CampPolicy implements Policy {
     // find first "on" bit and mask for rounding
     int msbIndex = Integer.SIZE - Integer.numberOfLeadingZeros(cost);
     int roundMask = (msbIndex <= precision)
-        ? Integer.MAX_VALUE
-        : bitMask << (msbIndex - precision);
+      ? Integer.MAX_VALUE
+      : bitMask << (msbIndex - precision);
     return (cost & roundMask);
   }
 
@@ -163,8 +159,8 @@ public final class CampPolicy implements Policy {
 
     int roundCost = roundedCost(event);
     int priority = priorityQueue.isEmpty()
-        ? roundCost
-        : priorityQueue.first().priority + roundCost;
+      ? roundCost
+      : priorityQueue.first().priority + roundCost;
     var sentinel = sentinelMapping.computeIfAbsent(roundCost, cost -> {
       // Add a new LRU list for the rounded cost
       var head = new Sentinel(roundCost);
@@ -221,12 +217,16 @@ public final class CampPolicy implements Policy {
       prev = next = this;
     }
 
-    /** Returns if the queue is empty. */
+    /**
+     * Returns if the queue is empty.
+     */
     public boolean isEmpty() {
       return (next == this);
     }
 
-    /** Appends the node to the tail of the list. */
+    /**
+     * Appends the node to the tail of the list.
+     */
     public void appendToTail(Node node) {
       var tail = prev;
       prev = node;
@@ -262,9 +262,9 @@ public final class CampPolicy implements Policy {
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
-          .add("cost", cost)
-          .add("priority", priority)
-          .toString();
+        .add("cost", cost)
+        .add("priority", priority)
+        .toString();
     }
   }
 
@@ -272,8 +272,10 @@ public final class CampPolicy implements Policy {
     final long key;
 
     Sentinel sentinel;
-    @Nullable Node prev;
-    @Nullable Node next;
+    @Nullable
+    Node prev;
+    @Nullable
+    Node next;
 
     int weight;
     int cost;
@@ -288,7 +290,9 @@ public final class CampPolicy implements Policy {
       this.key = key;
     }
 
-    /** Removes the node from the list. */
+    /**
+     * Removes the node from the list.
+     */
     public void remove() {
       checkState(!(this instanceof Sentinel));
       prev.next = next;
@@ -296,7 +300,9 @@ public final class CampPolicy implements Policy {
       prev = next = null;
     }
 
-    /** Moves the node to the tail. */
+    /**
+     * Moves the node to the tail.
+     */
     public void moveToTail() {
       // unlink
       prev.next = next;
@@ -312,9 +318,9 @@ public final class CampPolicy implements Policy {
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
-          .add("key", key)
-          .add("weight", weight)
-          .toString();
+        .add("key", key)
+        .add("weight", weight)
+        .toString();
     }
   }
 
@@ -322,6 +328,7 @@ public final class CampPolicy implements Policy {
     public CampSettings(Config config) {
       super(config);
     }
+
     public int precision() {
       return config().getInt("camp.precision");
     }

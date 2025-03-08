@@ -15,12 +15,6 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.linked;
 
-import static java.util.stream.Collectors.toUnmodifiableSet;
-
-import java.util.HashMap;
-import java.util.Random;
-import java.util.Set;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
@@ -30,12 +24,17 @@ import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
-
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+
+import java.util.HashMap;
+import java.util.Set;
+
+import static java.util.stream.Collectors.toUnmodifiableSet;
 
 /**
  * "Segmented LRU is based on the observation that objects with at least two accesses are much more
@@ -71,7 +70,7 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
 
   int sizeProtected;
 
-  private final Random sourcePicker;
+  private final Source source;
   private final HashMap<Long, Source> itemToSource;
 
   public SegmentedLruPolicy(Admission admission, Config config) {
@@ -86,8 +85,8 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     this.maxProtected = (int) (maximumSize * settings.percentProtected());
 
-    sourcePicker = new Random(Consts.SOURCE_PICKER_SEED);
     itemToSource = new HashMap<>();
+    source = new NormalSource(0.2, 0.05, 1);
   }
 
   /**
@@ -107,8 +106,6 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
     admittor.record(key);
 
     if (!itemToSource.containsKey(key)) {
-      // int sourceKey = sourcePicker.nextInt(Consts.SOURCES.size());
-      Source source = Consts.SOURCES.get(0);
       itemToSource.put(key, source);
     }
 
