@@ -4,10 +4,10 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.So
 
 public class Prefix {
   final long itemKey, fullItemChunksAmount;
+  final Source source;
   long chunksAmount;
   long requestsCountInPeriod;
   long lastRequestTime;
-  Source source;
 
   public Prefix(long itemKey, long fullItemChunksAmount, Source source, long currentTime) {
     this.itemKey = itemKey;
