@@ -66,7 +66,7 @@ public final class ClairvoyantPolicy implements Policy {
     infiniteTimestamp = Integer.MAX_VALUE;
     data = new IntRBTreeSet();
 
-    source = new NormalSource(0.004, 0.001, 1);
+    source = new NormalSource(0.003, 0.00075, 5);
     itemToSource = new HashMap<>();
   }
 

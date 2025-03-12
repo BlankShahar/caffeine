@@ -64,7 +64,7 @@ public final class CaffeinePolicy implements Policy {
     }
     cache = builder.build();
 
-    source = new NormalSource(0.004, 0.001, 1);
+    source = new NormalSource(0.003, 0.00075, 7);
     itemToSource = new HashMap<>();
   }
 
