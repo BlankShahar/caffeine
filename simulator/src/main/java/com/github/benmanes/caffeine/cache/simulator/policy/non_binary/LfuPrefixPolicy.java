@@ -55,7 +55,7 @@ public final class LfuPrefixPolicy implements Policy {
       onRequest(existingPrefix);
     } else {
       // prefix missing (full miss)
-      Source source = new NormalSource(0.2, 0.05, 1);
+      Source source = new NormalSource(0.004, 0.001, 1);
       var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, source, currentTime);
       onRequest(newPrefix);
     }
