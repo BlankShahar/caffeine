@@ -79,14 +79,14 @@ public final class CaffeinePolicy implements Policy {
       cache.put(event.key(), event);
       policyStats.recordWeightedMiss(event.weight());
 
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(event.retrievalDelay(), itemSize, Consts.BANDWIDTH));
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(event.retrievalDelay(), event.itemSize(), Consts.BANDWIDTH));
       policyStats.addDelay(event.retrievalDelay());
     } else {
       policyStats.recordWeightedHit(event.weight());
       if (event.weight() != value.weight()) {
         cache.put(event.key(), event);
 
-        policyStats.addLatency(TimeCalculations.calculateTransmissionTime(itemSize, Consts.BANDWIDTH));
+        policyStats.addLatency(TimeCalculations.calculateTransmissionTime(event.itemSize(), Consts.BANDWIDTH));
       }
     }
   }
