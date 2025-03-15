@@ -10,7 +10,7 @@ public final class TimeCalculations {
   public static double calculateNonBinaryLatency(double sourceDelay, double itemSize, double prefixSize, long bandwidth) {
     double prefixTransmissionTime = calculateTransmissionTime(prefixSize, bandwidth);
     double restTransmissionTime = 2 * calculateTransmissionTime(itemSize - prefixSize, bandwidth);
-    double delay = calculateDelay(sourceDelay, itemSize, prefixSize, bandwidth);
+    double delay = calculateUnderflowDelay(sourceDelay, itemSize, prefixSize, bandwidth);
     return prefixTransmissionTime + Math.max(0, delay) + restTransmissionTime;
   }
 
@@ -26,7 +26,7 @@ public final class TimeCalculations {
    * @param bandwidth   in MBps
    * @return the delay in seconds
    */
-  public static double calculateDelay(double sourceDelay, double itemSize, double prefixSize, long bandwidth) {
+  public static double calculateUnderflowDelay(double sourceDelay, double itemSize, double prefixSize, long bandwidth) {
     if (itemSize == prefixSize) {
       // If the whole item is cached, there's no delay whatsoever.
       // Even if the source delay is very big, if the whole item is cached, there will not be a request to source, therefore no delay.

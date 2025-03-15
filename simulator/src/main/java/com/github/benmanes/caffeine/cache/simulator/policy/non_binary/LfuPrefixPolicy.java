@@ -97,20 +97,19 @@ public final class LfuPrefixPolicy implements Policy {
     policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
 
     // Total delay and latency
-    double delay = calculateDelay(sourceDelay, old);
-    policyStats.addDelay(delay);
+    double underflowDelay = calculateDelay(sourceDelay, old);
+    policyStats.addDelay(underflowDelay);
     double latency = calculateLatency(sourceDelay, old);
     policyStats.addLatency(latency);
   }
 
   private void insertChunks(Prefix prefix) {
     while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
-      insertChunkToPrefix(prefix);
+      extendPrefix(prefix);
     }
 
     while (true) {
       Prefix victim = findVictim();
-      System.out.println(victim.itemKey);
       double sPlus = prefix.lfu_score_after_insertion();
       double sMinus = victim.lfu_score_after_eviction();
 
@@ -118,12 +117,13 @@ public final class LfuPrefixPolicy implements Policy {
         break;
       }
 
-      removeChunkFromPrefix(victim);
-      insertChunkToPrefix(prefix);
+//      System.out.println(victim.itemKey);
+      shrinkPrefix(victim);
+      extendPrefix(prefix);
     }
   }
 
-  private void removeChunkFromPrefix(Prefix prefix) {
+  private void shrinkPrefix(Prefix prefix) {
     prefix.removeChunk();
     currentCacheSize--;
 
@@ -136,7 +136,7 @@ public final class LfuPrefixPolicy implements Policy {
     policyStats.recordEviction();
   }
 
-  private void insertChunkToPrefix(Prefix prefix) {
+  private void extendPrefix(Prefix prefix) {
     prefix.insertChunk();
     currentCacheSize++;
 
@@ -164,7 +164,7 @@ public final class LfuPrefixPolicy implements Policy {
    * @return the delay in seconds
    */
   private static double calculateDelay(double sourceDelay, Prefix prefix) {
-    return TimeCalculations.calculateDelay(
+    return TimeCalculations.calculateUnderflowDelay(
       sourceDelay,
       prefix.fullItemSizeInMB(),
       prefix.sizeInMB(),

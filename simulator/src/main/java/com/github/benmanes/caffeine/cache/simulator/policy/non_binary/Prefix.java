@@ -24,15 +24,19 @@ public class Prefix {
       sizeInMB(),
       Consts.BANDWIDTH
     );
-    return frequency() * source.calculateCDF(prefixTransmissionTime);
+    return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double lfu_score_after_insertion() {
+    if (isFull()) {
+      return frequency(); // CDF value is 1
+    }
+
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB() + Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return frequency() * source.calculateCDF(prefixTransmissionTime);
+    return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double lfu_score_after_eviction() {
@@ -44,7 +48,7 @@ public class Prefix {
       sizeInMB() - Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return frequency() * source.calculateCDF(prefixTransmissionTime);
+    return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double lru_score() {
@@ -53,15 +57,19 @@ public class Prefix {
       sizeInMB(),
       Consts.BANDWIDTH
     );
-    return recency(LruPrefixPolicy.currentTime) * source.calculateCDF(prefixTransmissionTime);
+    return recency(LruPrefixPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double lru_score_after_insertion() {
+    if (isFull()) {
+      return recency(LruPrefixPolicy.currentTime); // CDF value is 1
+    }
+
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB() + Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return recency(LruPrefixPolicy.currentTime) * source.calculateCDF(prefixTransmissionTime);
+    return recency(LruPrefixPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double lru_score_after_eviction() {
@@ -73,7 +81,7 @@ public class Prefix {
       sizeInMB() - Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return recency(LruPrefixPolicy.currentTime) * source.calculateCDF(prefixTransmissionTime);
+    return recency(LruPrefixPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double frequency() {
@@ -107,10 +115,10 @@ public class Prefix {
   }
 
   public int LruCompareTo(Prefix other) {
-    return (int) Math.round(this.lru_score() - other.lru_score());
+    return Double.compare(this.lru_score(), other.lru_score());
   }
 
   public int LfuCompareTo(Prefix other) {
-    return (int) Math.round(this.lfu_score() - other.lfu_score());
+    return Double.compare(this.lfu_score(), other.lfu_score());
   }
 }
