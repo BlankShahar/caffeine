@@ -59,7 +59,7 @@ public final class GuavaPolicy implements Policy {
     }
     cache = builder.build();
 
-    source = new NormalSource(0.003, 0.00075, 8);
+    source = new NormalSource(1, 0.003, 0.00075);
     itemToSource = new HashMap<>();
   }
 

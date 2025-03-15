@@ -3,18 +3,17 @@ package com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources;
 import java.util.HashMap;
 import java.util.Random;
 
-public class NormalSource implements Source {
+public class NormalSource extends Source {
   private Random random;
-  private final long seed;
   private final double mean, standardDeviation; // in ms
   private final HashMap<Double, Double> zTable;
   private final HashMap<Double, Double> resultsCache;
 
-  public NormalSource(double mean, double standardDeviation, long key) {
-    this.seed = key;
-    this.random = new Random(seed);
+  public NormalSource(long id, double mean, double standardDeviation) {
+    super(id);
     this.mean = mean;
     this.standardDeviation = standardDeviation;
+    this.random = new Random(id);
     this.zTable = new HashMap<>();
     this.resultsCache = new HashMap<>();
     initiateZTable();

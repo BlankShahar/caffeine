@@ -86,7 +86,7 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
     this.maxProtected = (int) (maximumSize * settings.percentProtected());
 
     itemToSource = new HashMap<>();
-    source = new NormalSource(0.003, 0.00075, 4);
+    source = new NormalSource(1, 0.003, 0.00075);
   }
 
   /**

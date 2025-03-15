@@ -16,196 +16,196 @@ import java.util.Queue;
 
 @Policy.PolicySpec(name = "non-binary.LfuPrefix")
 public final class LfuPrefixPolicy implements Policy {
-    final Long2ObjectMap<Prefix> data;
-    final Queue<Long> requests;
-    static long currentTime;
-    final long maximumCacheSize; // in chunks
-    long currentCacheSize; // in chunks
-    final PolicyStats policyStats;
-    final Source source;
-    final SearchableMinHeap<Long, Prefix> scoreMinHeap;
+  final Long2ObjectMap<Prefix> data;
+  final Queue<Long> requests;
+  static long currentTime;
+  final long maximumCacheSize; // in chunks
+  long currentCacheSize; // in chunks
+  final PolicyStats policyStats;
+  final Source source;
+  final SearchableMinHeap<Long, Prefix> scoreMinHeap;
 
-    public LfuPrefixPolicy(Config config) {
-        var settings = new BasicSettings(config);
-        this.policyStats = new PolicyStats(name());
+  public LfuPrefixPolicy(Config config) {
+    var settings = new BasicSettings(config);
+    this.policyStats = new PolicyStats(name());
 
-        this.data = new Long2ObjectOpenHashMap<>();
-        this.requests = new ArrayDeque<>();
-        currentTime = 0;
+    this.data = new Long2ObjectOpenHashMap<>();
+    this.requests = new ArrayDeque<>();
+    currentTime = 0;
 
-        this.scoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD, this::comparePrefixes);
-        this.source = new NormalSource(0.003, 0.00075, 9);
+    this.scoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD, this::comparePrefixes);
+    this.source = new NormalSource(1, 0.003, 0.00075);
 
-        // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
-        // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
-        //  which we assume is ~1024 chunks per item.
-        // If we assume that a chunk size is 4KB, then an average item size is 4MB.
-        this.maximumCacheSize = settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
-        this.currentCacheSize = 0;
+    // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
+    // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
+    //  which we assume is ~1024 chunks per item.
+    // If we assume that a chunk size is 4KB, then an average item size is 4MB.
+    this.maximumCacheSize = settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
+    this.currentCacheSize = 0;
+  }
+
+  @Override
+  public void record(AccessEvent event) {
+    long itemKey = event.key();
+    var existingPrefix = data.getOrDefault(itemKey, null);
+    policyStats.recordOperation();
+    currentTime++;
+
+    if (existingPrefix != null) {
+      // prefix exist (partial hit)
+      existingPrefix.lastRequestTime = currentTime;
+      onRequest(existingPrefix, event.retrievalDelay());
+    } else {
+      // prefix missing (full miss)
+      var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, source, currentTime);
+      onRequest(newPrefix, event.retrievalDelay());
+    }
+  }
+
+  private void onRequest(Prefix prefix, double sourceDelay) {
+    recordRequestStatistics(prefix, sourceDelay);
+    handleRequestsFrequency(prefix);
+
+    if (!data.containsKey(prefix.itemKey)) {
+      data.put(prefix.itemKey, prefix);
+    }
+    insertChunks(prefix);
+  }
+
+  private void handleRequestsFrequency(Prefix prefix) {
+    prefix.requestsCountInPeriod++;
+
+    requests.add(prefix.itemKey);
+    if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
+      long lastRequestItemKey = requests.remove();
+      var lastRequestedPrefix = data.getOrDefault(lastRequestItemKey, null);
+      policyStats.recordOperation();
+
+      if (lastRequestedPrefix != null) {
+        lastRequestedPrefix.requestsCountInPeriod--;
+      }
+    }
+  }
+
+  private void recordRequestStatistics(Prefix old, double sourceDelay) {
+    // The ideal prefix size - the size that gives "no delay"/"all the item is cached" illusion
+    double idealSize = Math.min(old.fullItemSizeInMB(), sourceDelay * Consts.BANDWIDTH);
+    long idealChunksAmount = (long) Math.ceil(idealSize / Consts.CHUNK_SIZE);
+
+    // Chunk Hit Rate
+    policyStats.addHits(old.chunksAmount);
+    policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
+
+    // Total delay and latency
+    double delay = calculateDelay(sourceDelay, old);
+    policyStats.addDelay(delay);
+    double latency = calculateLatency(sourceDelay, old);
+    policyStats.addLatency(latency);
+  }
+
+  private void insertChunks(Prefix prefix) {
+    while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
+      insertChunkToPrefix(prefix);
     }
 
-    @Override
-    public void record(AccessEvent event) {
-        long itemKey = event.key();
-        var existingPrefix = data.getOrDefault(itemKey, null);
-        policyStats.recordOperation();
-        currentTime++;
+    while (true) {
+      Prefix victim = findVictim();
+      System.out.println(victim.itemKey);
+      double sPlus = prefix.lfu_score_after_insertion();
+      double sMinus = victim.lfu_score_after_eviction();
 
-        if (existingPrefix != null) {
-            // prefix exist (partial hit)
-            existingPrefix.lastRequestTime = currentTime;
-            onRequest(existingPrefix);
-        } else {
-            // prefix missing (full miss)
-            var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, source, currentTime);
-            onRequest(newPrefix);
-        }
+      if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
+        break;
+      }
+
+      removeChunkFromPrefix(victim);
+      insertChunkToPrefix(prefix);
+    }
+  }
+
+  private void removeChunkFromPrefix(Prefix prefix) {
+    prefix.removeChunk();
+    currentCacheSize--;
+
+    scoreMinHeap.remove(prefix.itemKey);
+    if (prefix.chunksAmount > 0) {
+      scoreMinHeap.insert(prefix.itemKey, prefix);
     }
 
-    private void onRequest(Prefix prefix) {
-        recordRequestStatistics(prefix);
-        handleRequestsFrequency(prefix);
+    policyStats.recordOperation();
+    policyStats.recordEviction();
+  }
 
-        if (!data.containsKey(prefix.itemKey)) {
-            data.put(prefix.itemKey, prefix);
-        }
-        insertChunks(prefix);
+  private void insertChunkToPrefix(Prefix prefix) {
+    prefix.insertChunk();
+    currentCacheSize++;
+
+    if (scoreMinHeap.contains(prefix.itemKey)) {
+      scoreMinHeap.remove(prefix.itemKey);
     }
+    scoreMinHeap.insert(prefix.itemKey, prefix);
 
-    private void handleRequestsFrequency(Prefix prefix) {
-        prefix.requestsCountInPeriod++;
+    policyStats.recordOperation();
+    policyStats.recordAdmission();
+  }
 
-        requests.add(prefix.itemKey);
-        if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
-            long lastRequestItemKey = requests.remove();
-            var lastRequestedPrefix = data.getOrDefault(lastRequestItemKey, null);
-            policyStats.recordOperation();
+  /**
+   * @return the victim chunk to be evicted, or null if no suitable one is found
+   */
+  private Prefix findVictim() {
+    return scoreMinHeap.min().value();
+  }
 
-            if (lastRequestedPrefix != null) {
-                lastRequestedPrefix.requestsCountInPeriod--;
-            }
-        }
-    }
+  /**
+   * Calculate the full latency of fetching a partial cached object
+   *
+   * @param sourceDelay in seconds
+   * @param prefix      the prefix of the item
+   * @return the delay in seconds
+   */
+  private static double calculateDelay(double sourceDelay, Prefix prefix) {
+    return TimeCalculations.calculateDelay(
+      sourceDelay,
+      prefix.fullItemSizeInMB(),
+      prefix.sizeInMB(),
+      Consts.BANDWIDTH
+    );
+  }
 
-    private void recordRequestStatistics(Prefix old) {
-        double sourceDelay = old.source.sampleProcessingTime();
-        // The ideal prefix size - the size that gives "no delay"/"all the item is cached" illusion
-        double idealSize = Math.min(old.fullItemSizeInMB(), sourceDelay * Consts.BANDWIDTH);
-        long idealChunksAmount = (long) Math.ceil(idealSize / Consts.CHUNK_SIZE);
+  /**
+   * Calculate the full latency of fetching a partial cached object
+   *
+   * @param sourceDelay in s
+   * @param prefix      the prefix of the item
+   * @return the latency in seconds
+   */
+  private static double calculateLatency(double sourceDelay, Prefix prefix) {
+    return TimeCalculations.calculateNonBinaryLatency(
+      sourceDelay,
+      prefix.fullItemSizeInMB(),
+      prefix.sizeInMB(),
+      Consts.BANDWIDTH
+    );
+  }
 
-        // Chunk Hit Rate
-        policyStats.addHits(old.chunksAmount);
-        policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
+  public int comparePrefixes(long prefixKey1, long prefixKey2) {
+    Prefix p1 = data.get(prefixKey1);
+    Prefix p2 = data.get(prefixKey2);
+    return p1.LfuCompareTo(p2);
+  }
 
-        // Total delay and latency
-        double delay = calculateDelay(sourceDelay, old);
-        policyStats.addDelay(delay);
-        double latency = calculateLatency(sourceDelay, old);
-        policyStats.addLatency(latency);
-    }
+  @Override
+  public void finished() {
+    Policy.super.finished();
+  }
 
-    private void insertChunks(Prefix prefix) {
-        while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
-            insertChunkToPrefix(prefix);
-        }
+  @Override
+  public PolicyStats stats() {
+    return policyStats;
+  }
 
-        while (true) {
-            Prefix victim = findVictim();
-            double sPlus = prefix.lfu_score_after_insertion();
-            double sMinus = victim.lfu_score_after_eviction();
-
-            if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
-                break;
-            }
-
-            removeChunkFromPrefix(victim);
-            insertChunkToPrefix(prefix);
-        }
-    }
-
-    private void removeChunkFromPrefix(Prefix prefix) {
-        prefix.removeChunk();
-        currentCacheSize--;
-
-        scoreMinHeap.remove(prefix.itemKey);
-        if (prefix.chunksAmount > 0) {
-            scoreMinHeap.insert(prefix.itemKey, prefix);
-        }
-
-        policyStats.recordOperation();
-        policyStats.recordEviction();
-    }
-
-    private void insertChunkToPrefix(Prefix prefix) {
-        prefix.insertChunk();
-        currentCacheSize++;
-
-        if (scoreMinHeap.contains(prefix.itemKey)) {
-            scoreMinHeap.remove(prefix.itemKey);
-        }
-        scoreMinHeap.insert(prefix.itemKey, prefix);
-
-        policyStats.recordOperation();
-        policyStats.recordAdmission();
-    }
-
-    /**
-     * @return the victim chunk to be evicted, or null if no suitable one is found
-     */
-    private Prefix findVictim() {
-        return scoreMinHeap.min().value();
-    }
-
-    /**
-     * Calculate the full latency of fetching a partial cached object
-     *
-     * @param sourceDelay in seconds
-     * @param prefix      the prefix of the item
-     * @return the delay in seconds
-     */
-    private static double calculateDelay(double sourceDelay, Prefix prefix) {
-        return TimeCalculations.calculateDelay(
-                sourceDelay,
-                prefix.fullItemSizeInMB(),
-                prefix.sizeInMB(),
-                Consts.BANDWIDTH
-        );
-    }
-
-    /**
-     * Calculate the full latency of fetching a partial cached object
-     *
-     * @param sourceDelay in s
-     * @param prefix      the prefix of the item
-     * @return the latency in seconds
-     */
-    private static double calculateLatency(double sourceDelay, Prefix prefix) {
-        return TimeCalculations.calculateNonBinaryLatency(
-                sourceDelay,
-                prefix.fullItemSizeInMB(),
-                prefix.sizeInMB(),
-                Consts.BANDWIDTH
-        );
-    }
-
-    public int comparePrefixes(long prefixKey1, long prefixKey2) {
-        Prefix p1 = data.get(prefixKey1);
-        Prefix p2 = data.get(prefixKey2);
-        return p1.LfuCompareTo(p2);
-    }
-
-    @Override
-    public void finished() {
-        Policy.super.finished();
-    }
-
-    @Override
-    public PolicyStats stats() {
-        return policyStats;
-    }
-
-    @Override
-    public String name() {
-        return Policy.super.name();
-    }
+  @Override
+  public String name() {
+    return Policy.super.name();
+  }
 }

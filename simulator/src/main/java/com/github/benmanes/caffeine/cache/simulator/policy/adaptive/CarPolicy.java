@@ -77,7 +77,7 @@ public final class CarPolicy implements KeyOnlyPolicy {
     this.policyStats = new PolicyStats(name());
     this.data = new Long2ObjectOpenHashMap<>();
 
-    source = new NormalSource(0.003, 0.00075, 3);
+    source = new NormalSource(1, 0.003, 0.00075);
     this.itemToSource = new HashMap<>();
 
     double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;

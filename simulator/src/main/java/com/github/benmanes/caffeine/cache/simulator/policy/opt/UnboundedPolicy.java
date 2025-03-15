@@ -57,7 +57,7 @@ public final class UnboundedPolicy implements Policy {
     data = new LongOpenHashSet(initialSize);
     policyStats = new PolicyStats(name());
 
-    source = new NormalSource(0.003, 0.00075, 6);
+    source = new NormalSource(1, 0.003, 0.00075);
     itemToSource = new HashMap<>();
   }
 

@@ -90,7 +90,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     this.headB1 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
     this.headB2 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
 
-    source = new NormalSource(0.003, 0.00075, 2);
+    source = new NormalSource(1, 0.003, 0.00075);
     itemToSource = new HashMap<>();
   }
 
