@@ -70,7 +70,6 @@ public final class CaffeinePolicy implements Policy {
 
   @Override
   public void record(AccessEvent event) {
-    double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     if (!itemToSource.containsKey(event.key())) {
       itemToSource.put(event.key(), source);
     }
@@ -80,9 +79,8 @@ public final class CaffeinePolicy implements Policy {
       cache.put(event.key(), event);
       policyStats.recordWeightedMiss(event.weight());
 
-      double sourceProcessingTime = itemToSource.get(event.key()).sampleProcessingTime();
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, itemSize, Consts.BANDWIDTH));
-      policyStats.addDelay(sourceProcessingTime);
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(event.retrievalDelay(), itemSize, Consts.BANDWIDTH));
+      policyStats.addDelay(event.retrievalDelay());
     } else {
       policyStats.recordWeightedHit(event.weight());
       if (event.weight() != value.weight()) {

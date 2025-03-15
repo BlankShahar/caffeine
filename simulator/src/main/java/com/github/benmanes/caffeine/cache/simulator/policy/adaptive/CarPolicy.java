@@ -17,6 +17,8 @@ package com.github.benmanes.caffeine.cache.simulator.policy.adaptive;
 
 import static com.google.common.base.Preconditions.checkState;
 
+import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
+import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
@@ -52,7 +54,7 @@ import java.util.Random;
  * @author ben.manes@gmail.com (Ben Manes)
  */
 @PolicySpec(name = "adaptive.Car")
-public final class CarPolicy implements KeyOnlyPolicy {
+public final class CarPolicy implements Policy {
   private final Long2ObjectMap<Node> data;
   private final PolicyStats policyStats;
   private final int maximumSize;
@@ -88,10 +90,10 @@ public final class CarPolicy implements KeyOnlyPolicy {
   }
 
   @Override
-  public void record(long key) {
-    Node node = data.get(key);
-    if (!itemToSource.containsKey(key)) {
-      itemToSource.put(key, source);
+  public void record(AccessEvent event) {
+    Node node = data.get(event.key());
+    if (!itemToSource.containsKey(event.key())) {
+      itemToSource.put(event.key(), source);
     }
 
     if (isHit(node)) {
@@ -101,12 +103,10 @@ public final class CarPolicy implements KeyOnlyPolicy {
       onHit(node);
     } else {
       policyStats.recordMiss();
-      double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
-      double sourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, itemSize, Consts.BANDWIDTH));
-      policyStats.addDelay(sourceProcessingTime);
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(event.retrievalDelay(), event.itemSize(), Consts.BANDWIDTH));
+      policyStats.addDelay(event.retrievalDelay());
 
-      onMiss(key, node);
+      onMiss(event.key(), node);
     }
   }
 

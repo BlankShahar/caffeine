@@ -75,16 +75,14 @@ public final class UnboundedPolicy implements Policy {
       itemToSource.put(event.key(), source);
     }
 
-    double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     if (data.add(key)) {
       policyStats.recordWeightedMiss(event.weight());
 
-      double sourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, itemSize, Consts.BANDWIDTH));
-      policyStats.addDelay(sourceProcessingTime);
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(event.retrievalDelay(), event.itemSize(), Consts.BANDWIDTH));
+      policyStats.addDelay(event.retrievalDelay());
     } else {
       policyStats.recordWeightedHit(event.weight());
-      policyStats.addLatency(TimeCalculations.calculateTransmissionTime(itemSize, Consts.BANDWIDTH));
+      policyStats.addLatency(TimeCalculations.calculateTransmissionTime(event.itemSize(), Consts.BANDWIDTH));
     }
   }
 }

@@ -67,7 +67,6 @@ public final class GuavaPolicy implements Policy {
   public void record(AccessEvent event) {
     long key = event.key();
     AccessEvent value = cache.getIfPresent(key);
-    double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     if (!itemToSource.containsKey(key)) {
       itemToSource.put(event.key(), source);
     }
@@ -76,12 +75,11 @@ public final class GuavaPolicy implements Policy {
       cache.put(event.key(), event);
       policyStats.recordWeightedMiss(event.weight());
 
-      double sourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, itemSize, Consts.BANDWIDTH));
-      policyStats.addDelay(sourceProcessingTime);
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(event.retrievalDelay(), event.itemSize(), Consts.BANDWIDTH));
+      policyStats.addDelay(event.retrievalDelay());
     } else {
       policyStats.recordWeightedHit(event.weight());
-      policyStats.addLatency(TimeCalculations.calculateTransmissionTime(itemSize, Consts.BANDWIDTH));
+      policyStats.addLatency(TimeCalculations.calculateTransmissionTime(event.itemSize(), Consts.BANDWIDTH));
 
       if (event.weight() != value.weight()) {
         cache.put(event.key(), event);

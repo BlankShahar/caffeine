@@ -25,6 +25,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalcul
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
+import it.unimi.dsi.fastutil.doubles.DoubleArrayFIFOQueue;
 import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;
 import it.unimi.dsi.fastutil.ints.IntPriorityQueue;
 import it.unimi.dsi.fastutil.ints.IntRBTreeSet;
@@ -100,7 +101,7 @@ public final class ClairvoyantPolicy implements Policy {
   /**
    * Performs the cache operations for the given key.
    */
-  private void process(long key, double hitPenalty, double missPenalty) {
+  private void process(long key, double hitPenalty, double missPenalty, double retrievalDelay, int itemSize) {
     IntPriorityQueue times = accessTimes.get(key);
 
     int lastAccess = times.dequeueInt();
@@ -117,7 +118,6 @@ public final class ClairvoyantPolicy implements Policy {
       itemToSource.put(key, source);
     }
 
-    double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
     if (found) {
       policyStats.recordHit();
       policyStats.recordHitPenalty(hitPenalty);
@@ -127,9 +127,8 @@ public final class ClairvoyantPolicy implements Policy {
       policyStats.recordMiss();
       policyStats.recordMissPenalty(missPenalty);
 
-      double sourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, itemSize, Consts.BANDWIDTH));
-      policyStats.addDelay(sourceProcessingTime);
+      policyStats.addLatency(TimeCalculations.calculateSourceLatency(retrievalDelay, itemSize, Consts.BANDWIDTH));
+      policyStats.addDelay(retrievalDelay);
 
       if (data.size() > maximumSize) {
         evict();
@@ -156,20 +155,25 @@ public final class ClairvoyantPolicy implements Policy {
 
   private final class KeyOnlyRecorder implements Recorder {
     private final LongArrayFIFOQueue future;
+    private final DoubleArrayFIFOQueue futureRetrievalDelays;
+    private final IntArrayFIFOQueue futureItemSizes;
 
     KeyOnlyRecorder() {
       future = new LongArrayFIFOQueue(maximumSize);
+      futureRetrievalDelays = new DoubleArrayFIFOQueue(maximumSize);
+      futureItemSizes = new IntArrayFIFOQueue(maximumSize);
     }
 
     @Override
     public void add(AccessEvent event) {
       future.enqueue(event.key());
+      futureRetrievalDelays.enqueue(event.retrievalDelay());
     }
 
     @Override
     public void process() {
       while (!future.isEmpty()) {
-        ClairvoyantPolicy.this.process(future.dequeueLong(), 0.0, 0.0);
+        ClairvoyantPolicy.this.process(future.dequeueLong(), 0.0, 0.0, futureRetrievalDelays.dequeueDouble(), futureItemSizes.dequeueInt());
       }
     }
   }
@@ -190,7 +194,7 @@ public final class ClairvoyantPolicy implements Policy {
     public void process() {
       while (!future.isEmpty()) {
         AccessEvent event = future.poll();
-        ClairvoyantPolicy.this.process(event.key(), event.hitPenalty(), event.missPenalty());
+        ClairvoyantPolicy.this.process(event.key(), event.hitPenalty(), event.missPenalty(), event.retrievalDelay(), event.itemSize());
       }
     }
   }

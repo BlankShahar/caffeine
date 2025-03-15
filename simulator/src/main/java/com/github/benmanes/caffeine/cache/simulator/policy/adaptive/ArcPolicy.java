@@ -16,7 +16,8 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.adaptive;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
-import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
+import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
@@ -51,7 +52,7 @@ import static com.google.common.base.Preconditions.checkState;
  * @author ben.manes@gmail.com (Ben Manes)
  */
 @PolicySpec(name = "adaptive.Arc")
-public final class ArcPolicy implements KeyOnlyPolicy {
+public final class ArcPolicy implements Policy {
   // In Cache:
   // - T1: Pages that have been accessed at least once
   // - T2: Pages that have been accessed at least twice
@@ -95,20 +96,20 @@ public final class ArcPolicy implements KeyOnlyPolicy {
   }
 
   @Override
-  public void record(long key) {
+  public void record(AccessEvent event) {
     policyStats.recordOperation();
 
-    if (!itemToSource.containsKey(key)) {
-      itemToSource.put(key, source);
+    if (!itemToSource.containsKey(event.key())) {
+      itemToSource.put(event.key(), source);
     }
 
-    Node node = data.get(key);
+    Node node = data.get(event.key());
     if (node == null) {
-      onMiss(key);
+      onMiss(event.key(), event.retrievalDelay());
     } else if (node.type == QueueType.B1) {
-      onHitB1(node);
+      onHitB1(node, event.retrievalDelay());
     } else if (node.type == QueueType.B2) {
-      onHitB2(node);
+      onHitB2(node, event.retrievalDelay());
     } else {
       onHit(node);
     }
@@ -129,7 +130,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     policyStats.addLatency(TimeCalculations.calculateTransmissionTime(node.size, Consts.BANDWIDTH));
   }
 
-  private void onHitB1(Node node) {
+  private void onHitB1(Node node, double retrievalDelay) {
     // x ∈ B1 (a miss in ARC(c), a hit in DBL(2c)):
     // Adapt p = min{ c, p + max{ |B2| / |B1|, 1} }. REPLACE(p).
     // Move x to the top of T2 and place it in the cache.
@@ -144,12 +145,11 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT2);
 
     policyStats.recordMiss();
-    double sourceProcessingTime = itemToSource.get(node.key).sampleProcessingTime();
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, node.size, Consts.BANDWIDTH));
-    policyStats.addDelay(sourceProcessingTime);
+    policyStats.addLatency(TimeCalculations.calculateSourceLatency(retrievalDelay, node.size, Consts.BANDWIDTH));
+    policyStats.addDelay(retrievalDelay);
   }
 
-  private void onHitB2(Node node) {
+  private void onHitB2(Node node, double retrievalDelay) {
     // x ∈ B2 (a miss in ARC(c), a hit in DBL(2c)):
     // Adapt p = max{ 0, p – max{ |B1| / |B2|, 1} } . REPLACE(p).
     // Move x to the top of T2 and place it in the cache.
@@ -164,12 +164,11 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT2);
 
     policyStats.recordMiss();
-    double sourceProcessingTime = itemToSource.get(node.key).sampleProcessingTime();
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, node.size, Consts.BANDWIDTH));
-    policyStats.addDelay(sourceProcessingTime);
+    policyStats.addLatency(TimeCalculations.calculateSourceLatency(retrievalDelay, node.size, Consts.BANDWIDTH));
+    policyStats.addDelay(retrievalDelay);
   }
 
-  private void onMiss(long key) {
+  private void onMiss(long key, double retrievalDelay) {
     // x ∈ L1 ∪ L2 (a miss in DBL(2c) and ARC(c)):
     // case (i) |L1| = c:
     //   If |T1| < c then delete the LRU page of B1 and REPLACE(p).
@@ -213,9 +212,8 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.appendToTail(headT1);
 
     policyStats.recordMiss();
-    double sourceProcessingTime = itemToSource.get(key).sampleProcessingTime();
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(sourceProcessingTime, node.size, Consts.BANDWIDTH));
-    policyStats.addDelay(sourceProcessingTime);
+    policyStats.addLatency(TimeCalculations.calculateSourceLatency(retrievalDelay, node.size, Consts.BANDWIDTH));
+    policyStats.addDelay(retrievalDelay);
   }
 
   /**
