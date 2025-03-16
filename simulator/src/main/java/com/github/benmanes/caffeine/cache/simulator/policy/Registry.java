@@ -15,19 +15,6 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.collect.ImmutableSet.toImmutableSet;
-import static java.util.Locale.US;
-import static org.apache.commons.lang3.StringUtils.isNotBlank;
-
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-import java.util.function.BiFunction;
-import java.util.function.Function;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
@@ -37,32 +24,14 @@ import com.github.benmanes.caffeine.cache.simulator.policy.adaptive.CartPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual.CampPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual.GDWheelPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual.GdsfPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.irr.ClockProPlusPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.irr.ClockProPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.irr.ClockProSimplePolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.irr.DClockPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.irr.FrdPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.irr.HillClimberFrdPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.irr.IndicatorFrdPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.irr.LirsPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.FrequentlyUsedPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.LinkedPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.MultiQueuePolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.S4LruPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.SegmentedLruPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.SievePolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.irr.*;
+import com.github.benmanes.caffeine.cache.simulator.policy.linked.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.LfuPrefixPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.LrfuPrefixPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.LruPrefixPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.UnboundedPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.product.Cache2kPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.product.CaffeinePolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.product.CoherencePolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.product.Ehcache3Policy;
-import com.github.benmanes.caffeine.cache.simulator.policy.product.ExpiringMapPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.product.GuavaPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.product.HazelcastPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.product.TCachePolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.product.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.sampled.SampledPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.WindowTinyLfuPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimberWindowTinyLfuPolicy;
@@ -82,6 +51,19 @@ import com.google.auto.value.AutoValue;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.typesafe.config.Config;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
+import static java.util.Locale.US;
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 /**
  * The registry of caching policies.
@@ -106,10 +88,10 @@ public final class Registry {
    */
   public ImmutableSet<Policy> policies() {
     return settings.policies().stream()
-        .map(name -> checkNotNull(factories.get(name.toLowerCase(US)), "%s not found", name))
-        .filter(factory -> factory.characteristics().containsAll(characteristics))
-        .flatMap(factory -> factory.creator().apply(settings.config()).stream())
-        .collect(toImmutableSet());
+      .map(name -> checkNotNull(factories.get(name.toLowerCase(US)), "%s not found", name))
+      .filter(factory -> factory.characteristics().containsAll(characteristics))
+      .flatMap(factory -> factory.creator().apply(settings.config()).stream())
+      .collect(toImmutableSet());
   }
 
   private void buildRegistry() {
@@ -125,29 +107,37 @@ public final class Registry {
     registerNonBinary();
   }
 
-  /** Registers the policy based on the annotated name. */
+  /**
+   * Registers the policy based on the annotated name.
+   */
   private void register(Class<? extends Policy> policyClass, Function<Config, Policy> creator) {
     registerMany(policyClass, config -> ImmutableSet.of(creator.apply(config)));
   }
 
-  /** Registers the policy based on the annotated name. */
+  /**
+   * Registers the policy based on the annotated name.
+   */
   private void register(Class<? extends Policy> policyClass,
-      BiFunction<Config, Set<Characteristic>, Policy> creator) {
+                        BiFunction<Config, Set<Characteristic>, Policy> creator) {
     registerMany(policyClass, config -> ImmutableSet.of(creator.apply(config, characteristics)));
   }
 
-  /** Registers the policy based on the annotated name. */
+  /**
+   * Registers the policy based on the annotated name.
+   */
   private void registerMany(Class<? extends Policy> policyClass,
-      Function<Config, Set<Policy>> creator) {
+                            Function<Config, Set<Policy>> creator) {
     PolicySpec policySpec = policyClass.getAnnotation(PolicySpec.class);
     checkState(isNotBlank(policySpec.name()), "The name must be specified on %s", policyClass);
     registerMany(policySpec.name(), policyClass, creator);
   }
 
-  /** Registers the policy using the specified name. */
+  /**
+   * Registers the policy using the specified name.
+   */
   @SuppressWarnings("InconsistentOverloads")
   private void registerMany(String name, Class<? extends Policy> policyClass,
-      Function<Config, Set<Policy>> creator) {
+                            Function<Config, Set<Policy>> creator) {
     factories.put(name.trim().toLowerCase(US), Factory.of(policyClass, creator));
   }
 
@@ -159,11 +149,11 @@ public final class Registry {
   private void registerLinked() {
     for (var policy : LinkedPolicy.EvictionPolicy.values()) {
       registerMany(policy.label(), LinkedPolicy.class,
-          config -> LinkedPolicy.policies(config, characteristics, policy));
+        config -> LinkedPolicy.policies(config, characteristics, policy));
     }
     for (var policy : FrequentlyUsedPolicy.EvictionPolicy.values()) {
       registerMany(policy.label(), FrequentlyUsedPolicy.class,
-          config -> FrequentlyUsedPolicy.policies(config, policy));
+        config -> FrequentlyUsedPolicy.policies(config, policy));
     }
     register(SievePolicy.class, SievePolicy::new);
     registerMany(S4LruPolicy.class, S4LruPolicy::policies);
@@ -174,7 +164,7 @@ public final class Registry {
   private void registerSampled() {
     for (var policy : SampledPolicy.EvictionPolicy.values()) {
       registerMany(policy.label(), SampledPolicy.class,
-          config -> SampledPolicy.policies(config, policy));
+        config -> SampledPolicy.policies(config, policy));
     }
   }
 
@@ -190,7 +180,7 @@ public final class Registry {
     registerMany(LruWindowTinyLfuPolicy.class, LruWindowTinyLfuPolicy::policies);
     registerMany(RandomWindowTinyLfuPolicy.class, RandomWindowTinyLfuPolicy::policies);
     registerMany(FullySegmentedWindowTinyLfuPolicy.class,
-        FullySegmentedWindowTinyLfuPolicy::policies);
+      FullySegmentedWindowTinyLfuPolicy::policies);
 
     register(FeedbackTinyLfuPolicy.class, FeedbackTinyLfuPolicy::new);
     registerMany(FeedbackWindowTinyLfuPolicy.class, FeedbackWindowTinyLfuPolicy::policies);
@@ -241,18 +231,20 @@ public final class Registry {
   private void registerNonBinary() {
     register(LruPrefixPolicy.class, LruPrefixPolicy::new);
     register(LfuPrefixPolicy.class, LfuPrefixPolicy::new);
+    register(LrfuPrefixPolicy.class, LrfuPrefixPolicy::new);
   }
 
   @AutoValue
   abstract static class Factory {
     abstract Class<? extends Policy> policyClass();
+
     abstract Function<Config, Set<Policy>> creator();
 
     ImmutableSet<Characteristic> characteristics() {
       var policySpec = policyClass().getAnnotation(PolicySpec.class);
       return (policySpec == null)
-          ? ImmutableSet.of()
-          : Sets.immutableEnumSet(Arrays.asList(policySpec.characteristics()));
+        ? ImmutableSet.of()
+        : Sets.immutableEnumSet(Arrays.asList(policySpec.characteristics()));
     }
 
     static Factory of(Class<? extends Policy> policyClass, Function<Config, Set<Policy>> creator) {

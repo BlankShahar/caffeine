@@ -190,7 +190,7 @@ public final class LruPrefixPolicy implements Policy {
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
     Prefix p1 = data.get(prefixKey1);
     Prefix p2 = data.get(prefixKey2);
-    return p1.LruCompareTo(p2);
+    return p1.lruCompareTo(p2);
   }
 
   @Override

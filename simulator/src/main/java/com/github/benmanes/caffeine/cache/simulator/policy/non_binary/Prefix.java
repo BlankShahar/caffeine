@@ -84,6 +84,33 @@ public class Prefix {
     return recency(LruPrefixPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
+  public double lrfu_score(double alpha, double maxFrequency, double maxRecency) {
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      sizeInMB(),
+      Consts.BANDWIDTH
+    );
+    return alpha * recency(LruPrefixPolicy.currentTime) / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
+      (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
+  }
+
+  public double lrfu_score_after_insertion(double alpha, double maxFrequency, double maxRecency) {
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      sizeInMB() + Consts.CHUNK_SIZE,
+      Consts.BANDWIDTH
+    );
+    return alpha * recency(LruPrefixPolicy.currentTime) / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
+      (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
+  }
+
+  public double lrfu_score_after_eviction(double alpha, double maxFrequency, double maxRecency) {
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      sizeInMB() - Consts.CHUNK_SIZE,
+      Consts.BANDWIDTH
+    );
+    return alpha * recency(LruPrefixPolicy.currentTime) / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
+      (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
+  }
+
   public double frequency() {
     return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
   }
@@ -114,11 +141,18 @@ public class Prefix {
     return chunksAmount == fullItemChunksAmount;
   }
 
-  public int LruCompareTo(Prefix other) {
+  public int lruCompareTo(Prefix other) {
     return Double.compare(this.lru_score(), other.lru_score());
   }
 
-  public int LfuCompareTo(Prefix other) {
+  public int lfuCompareTo(Prefix other) {
     return Double.compare(this.lfu_score(), other.lfu_score());
+  }
+
+  public int lrfuCompareTo(Prefix other) {
+    return Double.compare(
+      this.lrfu_score(LrfuPrefixPolicy.alpha, LrfuPrefixPolicy.maxRecency, LrfuPrefixPolicy.maxFrequency),
+      other.lrfu_score(LrfuPrefixPolicy.alpha, LrfuPrefixPolicy.maxRecency, LrfuPrefixPolicy.maxFrequency)
+    );
   }
 }
