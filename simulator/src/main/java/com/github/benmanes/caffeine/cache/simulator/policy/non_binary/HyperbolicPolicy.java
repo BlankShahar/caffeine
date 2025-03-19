@@ -14,36 +14,24 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.LrfuPrefix")
-public final class LrfuPrefixPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.Hyperbolic")
+public final class HyperbolicPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
-  static double alpha, maxRecency, maxFrequency;
-  final long refinementStep;
-  long q;
-  double previousTotalDelay, currentTotalDelay;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
   final PolicyStats policyStats;
   final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
 
-  public LrfuPrefixPolicy(Config config) {
+  public HyperbolicPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
     this.data = new Long2ObjectOpenHashMap<>();
     this.requests = new ArrayDeque<>();
-
     currentTime = 0;
-    alpha = 0.5;
-    maxRecency = 0;
-    maxFrequency = 0;
-    refinementStep = 1_000;
-    q = 0;
-    previousTotalDelay = 0;
-    currentTotalDelay = 0;
 
     this.scoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD, this::comparePrefixes);
     this.source = new NormalSource(1, 0.003, 0.00075);
@@ -77,39 +65,11 @@ public final class LrfuPrefixPolicy implements Policy {
   private void onRequest(Prefix prefix, double sourceDelay) {
     recordRequestStatistics(prefix, sourceDelay);
     handleRequestsFrequency(prefix);
-    updateParameters(prefix, sourceDelay);
 
     if (!data.containsKey(prefix.itemKey)) {
       data.put(prefix.itemKey, prefix);
     }
     insertChunks(prefix);
-  }
-
-  private void updateParameters(Prefix prefix, double retrievalDelay) {
-    currentTotalDelay += retrievalDelay;
-    double recency = prefix.recency(currentTime);
-    double frequency = prefix.frequency();
-    if (recency > maxRecency) {
-      maxRecency = recency;
-    }
-    if (frequency > maxFrequency) {
-      maxFrequency = frequency;
-    }
-    if (currentTime % refinementStep == 0) {
-      if (currentTotalDelay < previousTotalDelay) {
-        q++;
-      } else {
-        q = Math.max(0, q - 1);
-      }
-      alpha = 1 / Math.pow(1.05, q);
-      scoreMinHeap.clear();
-      for (long itemKey : data.keySet()) {
-        scoreMinHeap.insert(itemKey, data.get(itemKey));
-      }
-
-      previousTotalDelay = currentTotalDelay;
-      currentTotalDelay = 0;
-    }
   }
 
   private void handleRequestsFrequency(Prefix prefix) {
@@ -150,14 +110,13 @@ public final class LrfuPrefixPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.lfu_score_after_insertion();
-      double sMinus = victim.lfu_score_after_eviction();
+      double sPlus = prefix.hyperbolic_score_after_insertion();
+      double sMinus = victim.hyperbolic_score_after_eviction();
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;
       }
 
-//      System.out.println(victim.itemKey);
       shrinkPrefix(victim);
       extendPrefix(prefix);
     }
@@ -231,7 +190,7 @@ public final class LrfuPrefixPolicy implements Policy {
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
     Prefix p1 = data.get(prefixKey1);
     Prefix p2 = data.get(prefixKey2);
-    return p1.lrfuCompareTo(p2);
+    return p1.hyperbolicCompareTo(p2);
   }
 
   @Override

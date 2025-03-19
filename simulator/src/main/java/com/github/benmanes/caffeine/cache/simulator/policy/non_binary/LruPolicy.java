@@ -14,18 +14,18 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.LfuPrefix")
-public final class LfuPrefixPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.Lru")
+public final class LruPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
   final PolicyStats policyStats;
-  final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
+  Source source;
 
-  public LfuPrefixPolicy(Config config) {
+  public LruPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -97,7 +97,7 @@ public final class LfuPrefixPolicy implements Policy {
     policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
 
     // Total delay and latency
-    double underflowDelay = calculateDelay(sourceDelay, old);
+    double underflowDelay = calculateUnderflowDelay(sourceDelay, old);
     policyStats.addDelay(underflowDelay);
     double latency = calculateLatency(sourceDelay, old);
     policyStats.addLatency(latency);
@@ -110,14 +110,13 @@ public final class LfuPrefixPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.lfu_score_after_insertion();
-      double sMinus = victim.lfu_score_after_eviction();
+      double sPlus = prefix.lru_score_after_insertion();
+      double sMinus = victim.lru_score_after_eviction();
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;
       }
 
-//      System.out.println(victim.itemKey);
       shrinkPrefix(victim);
       extendPrefix(prefix);
     }
@@ -163,7 +162,7 @@ public final class LfuPrefixPolicy implements Policy {
    * @param prefix      the prefix of the item
    * @return the delay in seconds
    */
-  private static double calculateDelay(double sourceDelay, Prefix prefix) {
+  private static double calculateUnderflowDelay(double sourceDelay, Prefix prefix) {
     return TimeCalculations.calculateUnderflowDelay(
       sourceDelay,
       prefix.fullItemSizeInMB(),
@@ -191,7 +190,7 @@ public final class LfuPrefixPolicy implements Policy {
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
     Prefix p1 = data.get(prefixKey1);
     Prefix p2 = data.get(prefixKey2);
-    return p1.lfuCompareTo(p2);
+    return p1.lruCompareTo(p2);
   }
 
   @Override

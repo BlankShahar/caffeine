@@ -26,9 +26,10 @@ import com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual.GDWheelPo
 import com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual.GdsfPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.irr.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.*;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.LfuPrefixPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.LrfuPrefixPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.LruPrefixPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.HyperbolicPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.LfuPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.ConvexLrfuPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.LruPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.UnboundedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.*;
@@ -229,9 +230,10 @@ public final class Registry {
   }
 
   private void registerNonBinary() {
-    register(LruPrefixPolicy.class, LruPrefixPolicy::new);
-    register(LfuPrefixPolicy.class, LfuPrefixPolicy::new);
-    register(LrfuPrefixPolicy.class, LrfuPrefixPolicy::new);
+    register(LruPolicy.class, LruPolicy::new);
+    register(LfuPolicy.class, LfuPolicy::new);
+    register(ConvexLrfuPolicy.class, ConvexLrfuPolicy::new);
+    register(HyperbolicPolicy.class, HyperbolicPolicy::new);
   }
 
   @AutoValue
