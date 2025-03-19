@@ -84,7 +84,7 @@ public class Prefix {
     return recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double lrfu_score(double alpha, double maxFrequency, double maxRecency) {
+  public double convex_lrfu_score(double alpha, double maxFrequency, double maxRecency) {
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB(),
       Consts.BANDWIDTH
@@ -93,7 +93,7 @@ public class Prefix {
       (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double lrfu_score_after_insertion(double alpha, double maxFrequency, double maxRecency) {
+  public double convex_lrfu_score_after_insertion(double alpha, double maxFrequency, double maxRecency) {
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB() + Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
@@ -102,7 +102,7 @@ public class Prefix {
       (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double lrfu_score_after_eviction(double alpha, double maxFrequency, double maxRecency) {
+  public double convex_lrfu_score_after_eviction(double alpha, double maxFrequency, double maxRecency) {
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB() - Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
@@ -182,10 +182,10 @@ public class Prefix {
     return Double.compare(this.lfu_score(), other.lfu_score());
   }
 
-  public int lrfuCompareTo(Prefix other) {
+  public int convexLrfuCompareTo(Prefix other) {
     return Double.compare(
-      this.lrfu_score(ConvexLrfuPolicy.alpha, ConvexLrfuPolicy.maxRecency, ConvexLrfuPolicy.maxFrequency),
-      other.lrfu_score(ConvexLrfuPolicy.alpha, ConvexLrfuPolicy.maxRecency, ConvexLrfuPolicy.maxFrequency)
+      this.convex_lrfu_score(ConvexLrfuPolicy.alpha, ConvexLrfuPolicy.maxRecency, ConvexLrfuPolicy.maxFrequency),
+      other.convex_lrfu_score(ConvexLrfuPolicy.alpha, ConvexLrfuPolicy.maxRecency, ConvexLrfuPolicy.maxFrequency)
     );
   }
 

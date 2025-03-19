@@ -151,8 +151,8 @@ public final class ConvexLrfuPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.lrfu_score_after_insertion(alpha, maxFrequency, maxRecency);
-      double sMinus = victim.lrfu_score_after_eviction(alpha, maxFrequency, maxRecency);
+      double sPlus = prefix.convex_lrfu_score_after_insertion(alpha, maxFrequency, maxRecency);
+      double sMinus = victim.convex_lrfu_score_after_eviction(alpha, maxFrequency, maxRecency);
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;
@@ -231,7 +231,7 @@ public final class ConvexLrfuPolicy implements Policy {
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
     Prefix p1 = data.get(prefixKey1);
     Prefix p2 = data.get(prefixKey2);
-    return p1.lrfuCompareTo(p2);
+    return p1.convexLrfuCompareTo(p2);
   }
 
   @Override
