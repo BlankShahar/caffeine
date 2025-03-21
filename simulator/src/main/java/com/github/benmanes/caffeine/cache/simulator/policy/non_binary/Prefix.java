@@ -8,17 +8,20 @@ public class Prefix {
   long chunksAmount;
   long requestsCountInPeriod;
   long lastRequestTime;
+  long firstCacheChunksAmount, secondCacheChunksAmount;
 
   public Prefix(long itemKey, long fullItemChunksAmount, Source source, long currentTime) {
     this.itemKey = itemKey;
     this.fullItemChunksAmount = fullItemChunksAmount;
     this.source = source;
     this.requestsCountInPeriod = 0;
-    this.chunksAmount = 0;
     this.lastRequestTime = currentTime;
+    this.chunksAmount = 0;
+    this.firstCacheChunksAmount = 0;
+    this.secondCacheChunksAmount = 0;
   }
 
-  public double lfu_score() {
+  public double lfuScore() {
     // Idea - frequency times the probability of not experiencing delay
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB(),
@@ -27,7 +30,7 @@ public class Prefix {
     return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double lfu_score_after_insertion() {
+  public double lfuScoreAfterInsertion() {
     if (isFull()) {
       return frequency(); // CDF value is 1
     }
@@ -39,7 +42,7 @@ public class Prefix {
     return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double lfu_score_after_eviction() {
+  public double lfuScoreAfterEviction() {
     if (chunksAmount == 0) {
       return 0;
     }
@@ -51,7 +54,7 @@ public class Prefix {
     return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double lru_score() {
+  public double lruScore() {
     // Idea - recency times the probability of not experiencing delay
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB(),
@@ -60,7 +63,7 @@ public class Prefix {
     return recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double lru_score_after_insertion() {
+  public double lruScoreAfterInsertion() {
     if (isFull()) {
       return recency(LruPolicy.currentTime); // CDF value is 1
     }
@@ -72,7 +75,7 @@ public class Prefix {
     return recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double lru_score_after_eviction() {
+  public double lruScoreAfterEviction() {
     if (chunksAmount == 0) {
       return 0;
     }
@@ -84,7 +87,7 @@ public class Prefix {
     return recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double convex_lrfu_score(double alpha, double maxFrequency, double maxRecency) {
+  public double convexLrfuScore(double alpha, double maxFrequency, double maxRecency) {
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB(),
       Consts.BANDWIDTH
@@ -93,7 +96,7 @@ public class Prefix {
       (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double convex_lrfu_score_after_insertion(double alpha, double maxFrequency, double maxRecency) {
+  public double convexLrfuScoreAfterInsertion(double alpha, double maxFrequency, double maxRecency) {
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB() + Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
@@ -102,7 +105,7 @@ public class Prefix {
       (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double convex_lrfu_score_after_eviction(double alpha, double maxFrequency, double maxRecency) {
+  public double convexLrfuScoreAfterEviction(double alpha, double maxFrequency, double maxRecency) {
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB() - Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
@@ -111,7 +114,7 @@ public class Prefix {
       (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double hyperbolic_score() {
+  public double hyperbolicScore() {
     // Idea - frequency times recency times the probability of not experiencing delay
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB(),
@@ -120,7 +123,7 @@ public class Prefix {
     return frequency() * recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double hyperbolic_score_after_insertion() {
+  public double hyperbolicScoreAfterInsertion() {
     if (isFull()) {
       return recency(LruPolicy.currentTime); // CDF value is 1
     }
@@ -132,7 +135,7 @@ public class Prefix {
     return frequency() * recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
-  public double hyperbolic_score_after_eviction() {
+  public double hyperbolicScoreAfterEviction() {
     if (chunksAmount == 0) {
       return 0;
     }
@@ -142,6 +145,51 @@ public class Prefix {
       Consts.BANDWIDTH
     );
     return frequency() * recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+  }
+
+  public double pipelineFirstCacheScore() {
+    // Idea - frequency times recency times the probability of not experiencing delay
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      firstCacheChunksAmount * Consts.CHUNK_SIZE,
+      Consts.BANDWIDTH
+    );
+    return recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+  }
+
+  public double pipelineFirstCacheScoreAfterInsertion() {
+    if (isFull()) {
+      return recency(LruPolicy.currentTime); // CDF value is 1
+    }
+
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      (firstCacheChunksAmount + 1) * Consts.CHUNK_SIZE,
+      Consts.BANDWIDTH
+    );
+    return recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+  }
+
+  public double pipelineFirstCacheScoreAfterEviction() {
+    if (firstCacheChunksAmount == 0) {
+      return 0;
+    }
+
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      (firstCacheChunksAmount - 1) * Consts.CHUNK_SIZE,
+      Consts.BANDWIDTH
+    );
+    return recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+  }
+
+  public double pipelineSecondCacheScore() {
+    return this.lfuScore();
+  }
+
+  public double pipelineSecondCacheScoreAfterInsertion() {
+    return this.lfuScoreAfterInsertion();
+  }
+
+  public double pipelineSecondCacheScoreAfterEviction() {
+    return this.lfuScoreAfterEviction();
   }
 
   public double frequency() {
@@ -153,11 +201,41 @@ public class Prefix {
   }
 
   public void insertChunk() {
-    chunksAmount++;
+    if (!isFull()) {
+      chunksAmount++;
+    }
   }
 
   public void removeChunk() {
     if (chunksAmount > 0) {
+      chunksAmount--;
+    }
+  }
+
+  public void insertChunkToFirstCache() {
+    if (!isFull()) {
+      firstCacheChunksAmount++;
+      chunksAmount++;
+    }
+  }
+
+  public void removeChunkFromFirstCache() {
+    if (firstCacheChunksAmount > 0) {
+      firstCacheChunksAmount--;
+      chunksAmount--;
+    }
+  }
+
+  public void insertChunkToSecondCache() {
+    if (!isFull()) {
+      secondCacheChunksAmount++;
+      chunksAmount++;
+    }
+  }
+
+  public void removeChunkFromSecondCache() {
+    if (secondCacheChunksAmount > 0) {
+      secondCacheChunksAmount--;
       chunksAmount--;
     }
   }
@@ -175,21 +253,29 @@ public class Prefix {
   }
 
   public int lruCompareTo(Prefix other) {
-    return Double.compare(this.lru_score(), other.lru_score());
+    return Double.compare(this.lruScore(), other.lruScore());
   }
 
   public int lfuCompareTo(Prefix other) {
-    return Double.compare(this.lfu_score(), other.lfu_score());
+    return Double.compare(this.lfuScore(), other.lfuScore());
   }
 
   public int convexLrfuCompareTo(Prefix other) {
     return Double.compare(
-      this.convex_lrfu_score(ConvexLrfuPolicy.alpha, ConvexLrfuPolicy.maxRecency, ConvexLrfuPolicy.maxFrequency),
-      other.convex_lrfu_score(ConvexLrfuPolicy.alpha, ConvexLrfuPolicy.maxRecency, ConvexLrfuPolicy.maxFrequency)
+      this.convexLrfuScore(ConvexLrfuPolicy.alpha, ConvexLrfuPolicy.maxRecency, ConvexLrfuPolicy.maxFrequency),
+      other.convexLrfuScore(ConvexLrfuPolicy.alpha, ConvexLrfuPolicy.maxRecency, ConvexLrfuPolicy.maxFrequency)
     );
   }
 
   public int hyperbolicCompareTo(Prefix other) {
-    return Double.compare(this.hyperbolic_score(), other.hyperbolic_score());
+    return Double.compare(this.hyperbolicScore(), other.hyperbolicScore());
+  }
+
+  public int pipelineFirstCacheCompareTo(Prefix other) {
+    return Double.compare(this.pipelineFirstCacheScore(), other.pipelineFirstCacheScore());
+  }
+
+  public int pipelineSecondCacheCompareTo(Prefix other) {
+    return Double.compare(this.pipelineSecondCacheScore(), other.pipelineSecondCacheScore());
   }
 }

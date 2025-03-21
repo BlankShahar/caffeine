@@ -20,8 +20,9 @@ public final class ConvexLrfuPolicy implements Policy {
   final Queue<Long> requests;
   static long currentTime;
   static double alpha, maxRecency, maxFrequency;
-  final long refinementStep;
-  long q;
+  final long refinementInterval;
+  final double stepSize;
+  double q;
   double previousTotalDelay, currentTotalDelay;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
@@ -40,8 +41,9 @@ public final class ConvexLrfuPolicy implements Policy {
     alpha = 0.5;
     maxRecency = 0;
     maxFrequency = 0;
-    refinementStep = 10;
-    q = 0;
+    refinementInterval = 10;
+    stepSize = 0.05;
+    q = 2;
     previousTotalDelay = 0;
     currentTotalDelay = 0;
 
@@ -96,13 +98,13 @@ public final class ConvexLrfuPolicy implements Policy {
       maxFrequency = frequency;
     }
 
-    if (currentTime % refinementStep == 0) {
+    if (currentTime % refinementInterval == 0) {
       if (currentTotalDelay < previousTotalDelay) {
-        q++;
+        q += stepSize;
       } else {
-        q = Math.max(0, q - 1);
+        q = Math.max(0, q - stepSize);
       }
-      alpha = 1 / Math.pow(1.05, q);
+      alpha = 1 / Math.pow(2, q);
       scoreMinHeap.clear();
       for (long itemKey : data.keySet()) {
         scoreMinHeap.insert(itemKey, data.get(itemKey));
@@ -151,8 +153,8 @@ public final class ConvexLrfuPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.convex_lrfu_score_after_insertion(alpha, maxFrequency, maxRecency);
-      double sMinus = victim.convex_lrfu_score_after_eviction(alpha, maxFrequency, maxRecency);
+      double sPlus = prefix.convexLrfuScoreAfterInsertion(alpha, maxFrequency, maxRecency);
+      double sMinus = victim.convexLrfuScoreAfterEviction(alpha, maxFrequency, maxRecency);
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;

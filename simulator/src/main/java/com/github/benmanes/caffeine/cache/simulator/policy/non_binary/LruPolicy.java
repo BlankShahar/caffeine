@@ -110,8 +110,8 @@ public final class LruPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.lru_score_after_insertion();
-      double sMinus = victim.lru_score_after_eviction();
+      double sPlus = prefix.lruScoreAfterInsertion();
+      double sMinus = victim.lruScoreAfterEviction();
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;

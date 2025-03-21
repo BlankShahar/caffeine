@@ -110,8 +110,8 @@ public final class HyperbolicPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.hyperbolic_score_after_insertion();
-      double sMinus = victim.hyperbolic_score_after_eviction();
+      double sPlus = prefix.hyperbolicScoreAfterInsertion();
+      double sMinus = victim.hyperbolicScoreAfterEviction();
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;
