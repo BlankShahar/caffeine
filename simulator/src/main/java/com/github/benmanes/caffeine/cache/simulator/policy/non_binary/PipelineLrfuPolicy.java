@@ -19,8 +19,13 @@ public final class PipelineLrfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
-  final long firstCacheSize, secondCacheSize; // in chunks
+  final long fullCacheSize; // in chunks
+  long firstCacheSize, secondCacheSize;
   long currentFirstCacheSize, currentSecondCacheSize; // in chunks
+  final long refinementInterval;
+  final double stepSize;
+  double q, ratio;
+  double previousTotalDelay, currentTotalDelay;
   final PolicyStats policyStats;
   final Source source;
   final SearchableMinHeap<Long, Prefix> firstCacheScoreMinHeap, secondCacheScoreMinHeap;
@@ -33,6 +38,13 @@ public final class PipelineLrfuPolicy implements Policy {
     this.requests = new ArrayDeque<>();
     currentTime = 0;
 
+    q = 2;
+    ratio = 0.5;
+    refinementInterval = 10;
+    stepSize = 0.05;
+    previousTotalDelay = 0;
+    currentTotalDelay = 0;
+
     this.firstCacheScoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD, this::comparePrefixesFirstCache);
     this.secondCacheScoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD, this::comparePrefixesSecondCache);
 
@@ -42,8 +54,9 @@ public final class PipelineLrfuPolicy implements Policy {
     // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
     //  which we assume is ~1024 chunks per item.
     // If we assume that a chunk size is 4KB, then an average item size is 4MB.
-    this.firstCacheSize = settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT / 2;
-    this.secondCacheSize = settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT - this.firstCacheSize;
+    this.fullCacheSize = settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
+    this.firstCacheSize = (long) Math.floor(ratio * fullCacheSize);
+    this.secondCacheSize = (long) Math.ceil((1 - ratio) * fullCacheSize);
     this.currentFirstCacheSize = 0;
     this.currentSecondCacheSize = 0;
   }
@@ -69,6 +82,7 @@ public final class PipelineLrfuPolicy implements Policy {
   private void onRequest(Prefix prefix, double sourceDelay) {
     recordRequestStatistics(prefix, sourceDelay);
     handleRequestsFrequency(prefix);
+    updateParameters(sourceDelay);
 
     if (!data.containsKey(prefix.itemKey)) {
       data.put(prefix.itemKey, prefix);
@@ -106,6 +120,43 @@ public final class PipelineLrfuPolicy implements Policy {
     double latency = calculateLatency(sourceDelay, old);
     policyStats.addLatency(latency);
   }
+
+  private void updateParameters(double retrievalDelay) {
+    currentTotalDelay += retrievalDelay;
+
+    if (currentTime % refinementInterval == 0) {
+      if (currentTotalDelay < previousTotalDelay) {
+        q += stepSize;
+      } else {
+        q = Math.max(0, q - stepSize);
+      }
+      double previousFirstCacheSize = firstCacheSize, previousSecondCacheSize = secondCacheSize;
+
+      ratio = 1 / Math.pow(2, q);
+      firstCacheSize = (long) Math.floor(ratio * fullCacheSize);
+      secondCacheSize = (long) Math.ceil((1 - ratio) * fullCacheSize);
+
+      double x = Math.max(0, previousFirstCacheSize - firstCacheSize);
+      double y = Math.max(0, previousSecondCacheSize - secondCacheSize);
+
+      for (int k = 0; k < Math.min(x, firstCacheScoreMinHeap.size); k++) {
+        // move the x lowest scored chunks from 1st cache to 2nd cache
+        Prefix victim = findFirstCacheVictim();
+        shrinkPrefixFirstCache(victim);
+        extendPrefixSecondCache(victim);
+      }
+      for (int k = 0; k < Math.min(y, secondCacheScoreMinHeap.size); k++) {
+        // move the y lowest scored chunks from 2nd cache to 1st cache
+        Prefix victim = findSecondCacheVictim();
+        shrinkPrefixSecondCache(victim);
+        extendPrefixFirstCache(victim);
+      }
+
+      previousTotalDelay = currentTotalDelay;
+      currentTotalDelay = 0;
+    }
+  }
+
 
   private void insertChunks(Prefix prefix) {
     while (!prefix.isFull() && currentFirstCacheSize < firstCacheSize) {
