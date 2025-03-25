@@ -79,7 +79,7 @@ public final class CampPolicy implements Policy {
     this.sentinelMapping = new Int2ObjectOpenHashMap<>();
     this.bitMask = Integer.MAX_VALUE >> (Integer.SIZE - 1 - precision);
 
-    source = new NormalSource(1, 0.003, 0.00075);
+    source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
     itemToSource = new HashMap<>();
   }
 

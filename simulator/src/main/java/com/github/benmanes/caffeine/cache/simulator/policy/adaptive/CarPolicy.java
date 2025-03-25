@@ -79,7 +79,7 @@ public final class CarPolicy implements Policy {
     this.policyStats = new PolicyStats(name());
     this.data = new Long2ObjectOpenHashMap<>();
 
-    source = new NormalSource(1, 0.003, 0.00075);
+    source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
     this.itemToSource = new HashMap<>();
 
     double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;

@@ -41,14 +41,14 @@ public final class ConvexLrfuPolicy implements Policy {
     alpha = 0.5;
     maxRecency = 0;
     maxFrequency = 0;
-    refinementInterval = 10;
+    refinementInterval = 10; //settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
     stepSize = 0.05;
     q = 2;
     previousTotalDelay = 0;
     currentTotalDelay = 0;
 
-    this.scoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD, this::comparePrefixes);
-    this.source = new NormalSource(1, 0.003, 0.00075);
+    this.scoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD * 1_000, this::comparePrefixes);
+    this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
     // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
     // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
@@ -91,6 +91,8 @@ public final class ConvexLrfuPolicy implements Policy {
     currentTotalDelay += retrievalDelay;
     double recency = prefix.recency(currentTime);
     double frequency = prefix.frequency();
+
+    // TODO: in these "ifs" we should also reconstruct the heap...
     if (recency > maxRecency) {
       maxRecency = recency;
     }

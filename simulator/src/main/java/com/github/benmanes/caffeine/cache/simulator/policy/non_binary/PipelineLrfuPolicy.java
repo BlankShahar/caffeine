@@ -45,10 +45,10 @@ public final class PipelineLrfuPolicy implements Policy {
     previousTotalDelay = 0;
     currentTotalDelay = 0;
 
-    this.firstCacheScoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD, this::comparePrefixesFirstCache);
-    this.secondCacheScoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD, this::comparePrefixesSecondCache);
+    this.firstCacheScoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD * 1_000, this::comparePrefixesFirstCache);
+    this.secondCacheScoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD * 1_000, this::comparePrefixesSecondCache);
 
-    this.source = new NormalSource(1, 0.003, 0.00075);
+    this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
     // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
     // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -

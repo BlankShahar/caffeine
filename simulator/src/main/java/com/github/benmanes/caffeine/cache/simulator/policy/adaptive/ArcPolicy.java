@@ -91,7 +91,7 @@ public final class ArcPolicy implements Policy {
     this.headB1 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
     this.headB2 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
 
-    source = new NormalSource(1, 0.003, 0.00075);
+    source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
     itemToSource = new HashMap<>();
   }
 
