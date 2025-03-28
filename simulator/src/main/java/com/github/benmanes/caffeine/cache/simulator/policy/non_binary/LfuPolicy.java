@@ -33,14 +33,14 @@ public final class LfuPolicy implements Policy {
     this.requests = new ArrayDeque<>();
     currentTime = 0;
 
-    this.scoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD * 1_000, this::comparePrefixes);
+    this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize() * 1_000, this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
     // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
     // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
     //  which we assume is ~1024 chunks per item.
     // If we assume that a chunk size is 4KB, then an average item size is 4MB.
-    this.maximumCacheSize = settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
+    this.maximumCacheSize = settings.maximumSize(); // * Consts.ITEM_CHUNKS_AMOUNT;
     this.currentCacheSize = 0;
   }
 
@@ -69,7 +69,7 @@ public final class LfuPolicy implements Policy {
     if (!data.containsKey(prefix.itemKey)) {
       data.put(prefix.itemKey, prefix);
     }
-    insertChunks(prefix);
+    waterFill(prefix);
   }
 
   private void handleRequestsFrequency(Prefix prefix) {
@@ -103,7 +103,7 @@ public final class LfuPolicy implements Policy {
     policyStats.addLatency(latency);
   }
 
-  private void insertChunks(Prefix prefix) {
+  private void waterFill(Prefix prefix) {
     while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
       extendPrefix(prefix);
     }

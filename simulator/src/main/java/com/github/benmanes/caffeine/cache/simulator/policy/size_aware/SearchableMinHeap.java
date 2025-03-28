@@ -1,4 +1,4 @@
-package com.github.benmanes.caffeine.cache.simulator.policy.non_binary;
+package com.github.benmanes.caffeine.cache.simulator.policy.size_aware;
 
 import com.github.benmanes.caffeine.cache.simulator.DebugHelpers.Assert;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -64,6 +64,10 @@ public class SearchableMinHeap<K, V> {
     this.maxSize = other.maxSize;
 
     makeHeap();
+  }
+
+  public boolean isEmpty(){
+    return size == 0;
   }
 
   public void copyInto(SearchableMinHeap<K, V> other) {
@@ -348,9 +352,5 @@ public class SearchableMinHeap<K, V> {
 
   public void setSize(int size) {
     this.maxSize = size;
-  }
-
-  public boolean isEmpty(){
-    return size == 0;
   }
 }

@@ -21,6 +21,9 @@ import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import java.util.Set;
 
+import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import org.apache.commons.lang3.StringUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
@@ -43,7 +46,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
-public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
+public final class FrequentlyUsedPolicy implements Policy {
   final PolicyStats policyStats;
   final Long2ObjectMap<Node> data;
   final EvictionPolicy policy;
@@ -61,7 +64,9 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
     this.freq0 = new FrequencyNode();
   }
 
-  /** Returns all variations of this policy based on the configuration parameters. */
+  /**
+   * Returns all variations of this policy based on the configuration parameters.
+   */
   public static Set<Policy> policies(Config config, EvictionPolicy policy) {
     var settings = new BasicSettings(config);
     return settings.admission().stream().map(admission ->
@@ -75,25 +80,28 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
   }
 
   @Override
-  public void record(long key) {
+  public void record(AccessEvent event) {
+    long key = event.key();
     policyStats.recordOperation();
     Node node = data.get(key);
     admittor.record(key);
     if (node == null) {
-      onMiss(key);
+      onMiss(key, event);
     } else {
       onHit(node);
     }
   }
 
-  /** Moves the entry to the next higher frequency list, creating it if necessary. */
+  /**
+   * Moves the entry to the next higher frequency list, creating it if necessary.
+   */
   private void onHit(Node node) {
     policyStats.recordHit();
 
     int newCount = node.freq.count + 1;
     FrequencyNode freqN = (node.freq.next.count == newCount)
-        ? node.freq.next
-        : new FrequencyNode(newCount, node.freq);
+      ? node.freq.next
+      : new FrequencyNode(newCount, node.freq);
     node.remove();
     if (node.freq.isEmpty()) {
       node.freq.remove();
@@ -102,19 +110,25 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
     node.append();
   }
 
-  /** Adds the entry, creating an initial frequency list of 1 if necessary, and evicts if needed. */
-  private void onMiss(long key) {
+  /**
+   * Adds the entry, creating an initial frequency list of 1 if necessary, and evicts if needed.
+   */
+  private void onMiss(long key, AccessEvent event) {
     FrequencyNode freq1 = (freq0.next.count == 1)
-        ? freq0.next
-        : new FrequencyNode(1, freq0);
+      ? freq0.next
+      : new FrequencyNode(1, freq0);
     var node = new Node(freq1, key);
     policyStats.recordMiss();
+    policyStats.addLatency(TimeCalculations.calculateSourceLatency(event.retrievalDelay(), event.itemSize(), Consts.BANDWIDTH));
+    policyStats.addDelay(event.retrievalDelay());
     data.put(key, node);
     node.append();
     evict(node);
   }
 
-  /** Evicts while the map exceeds the maximum capacity. */
+  /**
+   * Evicts while the map exceeds the maximum capacity.
+   */
   private void evict(Node candidate) {
     if (data.size() > maximumSize) {
       Node victim = nextVictim(candidate);
@@ -143,13 +157,15 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
     @Var Node victim = freq0.next.nextNode.next;
     if (victim == candidate) {
       victim = (victim.next == victim.prev)
-          ? victim.freq.next.nextNode.next
-          : victim.next;
+        ? victim.freq.next.nextNode.next
+        : victim.next;
     }
     return victim;
   }
 
-  /** Removes the entry. */
+  /**
+   * Removes the entry.
+   */
   private void evictEntry(Node node) {
     data.remove(node.key);
     node.remove();
@@ -166,13 +182,17 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
     }
   }
 
-  /** A frequency count and associated chain of cache entries. */
+  /**
+   * A frequency count and associated chain of cache entries.
+   */
   static final class FrequencyNode {
     final int count;
     final Node nextNode;
 
-    @Nullable FrequencyNode prev;
-    @Nullable FrequencyNode next;
+    @Nullable
+    FrequencyNode prev;
+    @Nullable
+    FrequencyNode next;
 
     public FrequencyNode() {
       nextNode = new Node(this);
@@ -194,7 +214,9 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
       return (nextNode == nextNode.next);
     }
 
-    /** Removes the node from the list. */
+    /**
+     * Removes the node from the list.
+     */
     public void remove() {
       prev.next = next;
       next.prev = prev;
@@ -204,18 +226,22 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
-          .add("count", count)
-          .toString();
+        .add("count", count)
+        .toString();
     }
   }
 
-  /** A cache entry on the frequency node's chain. */
+  /**
+   * A cache entry on the frequency node's chain.
+   */
   static final class Node {
     final long key;
 
     FrequencyNode freq;
-    @Nullable Node prev;
-    @Nullable Node next;
+    @Nullable
+    Node prev;
+    @Nullable
+    Node next;
 
     public Node(FrequencyNode freq) {
       this.key = Long.MIN_VALUE;
@@ -231,7 +257,9 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
       this.key = key;
     }
 
-    /** Appends the node to the tail of the list. */
+    /**
+     * Appends the node to the tail of the list.
+     */
     public void append() {
       prev = freq.nextNode.prev;
       next = freq.nextNode;
@@ -239,7 +267,9 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
       next.prev = this;
     }
 
-    /** Removes the node from the list. */
+    /**
+     * Removes the node from the list.
+     */
     public void remove() {
       prev.next = next;
       next.prev = prev;
@@ -249,9 +279,9 @@ public final class FrequentlyUsedPolicy implements KeyOnlyPolicy {
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
-          .add("key", key)
-          .add("freq", freq)
-          .toString();
+        .add("key", key)
+        .add("freq", freq)
+        .toString();
     }
   }
 }

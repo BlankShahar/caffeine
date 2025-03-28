@@ -41,13 +41,13 @@ public final class ConvexLrfuPolicy implements Policy {
     alpha = 0.5;
     maxRecency = 0;
     maxFrequency = 0;
-    refinementInterval = 10; //settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
+    refinementInterval = 1; //settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
     stepSize = 0.05;
-    q = 2;
+    q = 1;
     previousTotalDelay = 0;
     currentTotalDelay = 0;
 
-    this.scoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD * 1_000, this::comparePrefixes);
+    this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize() * 1_000, this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
     // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
@@ -84,7 +84,14 @@ public final class ConvexLrfuPolicy implements Policy {
     if (!data.containsKey(prefix.itemKey)) {
       data.put(prefix.itemKey, prefix);
     }
-    insertChunks(prefix);
+    waterFill(prefix);
+  }
+
+  private void rebuildHeap() {
+    scoreMinHeap.clear();
+    for (long itemKey : data.keySet()) {
+      scoreMinHeap.insert(itemKey, data.get(itemKey));
+    }
   }
 
   private void updateParameters(Prefix prefix, double retrievalDelay) {
@@ -92,12 +99,13 @@ public final class ConvexLrfuPolicy implements Policy {
     double recency = prefix.recency(currentTime);
     double frequency = prefix.frequency();
 
-    // TODO: in these "ifs" we should also reconstruct the heap...
     if (recency > maxRecency) {
       maxRecency = recency;
+      rebuildHeap();
     }
     if (frequency > maxFrequency) {
       maxFrequency = frequency;
+      rebuildHeap();
     }
 
     if (currentTime % refinementInterval == 0) {
@@ -107,10 +115,7 @@ public final class ConvexLrfuPolicy implements Policy {
         q = Math.max(0, q - stepSize);
       }
       alpha = 1 / Math.pow(2, q);
-      scoreMinHeap.clear();
-      for (long itemKey : data.keySet()) {
-        scoreMinHeap.insert(itemKey, data.get(itemKey));
-      }
+      rebuildHeap();
 
       previousTotalDelay = currentTotalDelay;
       currentTotalDelay = 0;
@@ -148,7 +153,7 @@ public final class ConvexLrfuPolicy implements Policy {
     policyStats.addLatency(latency);
   }
 
-  private void insertChunks(Prefix prefix) {
+  private void waterFill(Prefix prefix) {
     while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
       extendPrefix(prefix);
     }
@@ -208,12 +213,7 @@ public final class ConvexLrfuPolicy implements Policy {
    * @return the delay in seconds
    */
   private static double calculateDelay(double sourceDelay, Prefix prefix) {
-    return TimeCalculations.calculateUnderflowDelay(
-      sourceDelay,
-      prefix.fullItemSizeInMB(),
-      prefix.sizeInMB(),
-      Consts.BANDWIDTH
-    );
+    return TimeCalculations.calculateUnderflowDelay(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
   }
 
   /**
@@ -224,12 +224,7 @@ public final class ConvexLrfuPolicy implements Policy {
    * @return the latency in seconds
    */
   private static double calculateLatency(double sourceDelay, Prefix prefix) {
-    return TimeCalculations.calculateNonBinaryLatency(
-      sourceDelay,
-      prefix.fullItemSizeInMB(),
-      prefix.sizeInMB(),
-      Consts.BANDWIDTH
-    );
+    return TimeCalculations.calculateNonBinaryLatency(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
   }
 
   public int comparePrefixes(long prefixKey1, long prefixKey2) {

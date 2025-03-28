@@ -38,15 +38,15 @@ public final class PipelineLrfuPolicy implements Policy {
     this.requests = new ArrayDeque<>();
     currentTime = 0;
 
-    q = 2;
+    q = 1;
     ratio = 0.5;
-    refinementInterval = 10;
+    refinementInterval = 1;
     stepSize = 0.05;
     previousTotalDelay = 0;
     currentTotalDelay = 0;
 
-    this.firstCacheScoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD * 1_000, this::comparePrefixesFirstCache);
-    this.secondCacheScoreMinHeap = new SearchableMinHeap<>((int) Consts.REQUESTS_FREQUENCY_PERIOD * 1_000, this::comparePrefixesSecondCache);
+    this.firstCacheScoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize() * 1_000, this::comparePrefixesFirstCache);
+    this.secondCacheScoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize() * 1_000, this::comparePrefixesSecondCache);
 
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
@@ -87,7 +87,7 @@ public final class PipelineLrfuPolicy implements Policy {
     if (!data.containsKey(prefix.itemKey)) {
       data.put(prefix.itemKey, prefix);
     }
-    insertChunks(prefix);
+    waterFill(prefix);
   }
 
   private void handleRequestsFrequency(Prefix prefix) {
@@ -158,7 +158,7 @@ public final class PipelineLrfuPolicy implements Policy {
   }
 
 
-  private void insertChunks(Prefix prefix) {
+  private void waterFill(Prefix prefix) {
     while (!prefix.isFull() && currentFirstCacheSize < firstCacheSize) {
       extendPrefixFirstCache(prefix);
     }
