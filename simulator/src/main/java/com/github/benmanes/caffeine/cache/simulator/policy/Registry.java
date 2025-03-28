@@ -31,7 +31,6 @@ import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.UnboundedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.sampled.SampledPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.LfuPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.WindowTinyLfuPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimberWindowTinyLfuPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.feedback.FeedbackTinyLfuPolicy;
@@ -230,7 +229,7 @@ public final class Registry {
 
   private void registerNonBinary() {
     register(LruPolicy.class, LruPolicy::new);
-    register(com.github.benmanes.caffeine.cache.simulator.policy.non_binary.LfuPolicy.class, com.github.benmanes.caffeine.cache.simulator.policy.non_binary.LfuPolicy::new);
+    register(LfuPolicy.class, LfuPolicy::new);
     register(ConvexLrfuPolicy.class, ConvexLrfuPolicy::new);
     register(PipelineLrfuPolicy.class, PipelineLrfuPolicy::new);
     register(HyperbolicPolicy.class, HyperbolicPolicy::new);
@@ -238,8 +237,12 @@ public final class Registry {
 
   private void registerSizeAware() {
     register(
-      LfuPolicy.class,
-      LfuPolicy::new
+      com.github.benmanes.caffeine.cache.simulator.policy.size_aware.LfuPolicy.class,
+      com.github.benmanes.caffeine.cache.simulator.policy.size_aware.LfuPolicy::new
+    );
+    register(
+      com.github.benmanes.caffeine.cache.simulator.policy.size_aware.LruPolicy.class,
+      com.github.benmanes.caffeine.cache.simulator.policy.size_aware.LruPolicy::new
     );
   }
 

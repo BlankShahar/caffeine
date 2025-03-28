@@ -123,6 +123,9 @@ public final class HyperbolicPolicy implements Policy {
   }
 
   private void shrinkPrefix(Prefix prefix) {
+    if (prefix.isEmpty()) {
+      return;
+    }
     prefix.removeChunk();
     currentCacheSize--;
 
@@ -136,6 +139,9 @@ public final class HyperbolicPolicy implements Policy {
   }
 
   private void extendPrefix(Prefix prefix) {
+    if (prefix.isFull()) {
+      return;
+    }
     prefix.insertChunk();
     currentCacheSize++;
 

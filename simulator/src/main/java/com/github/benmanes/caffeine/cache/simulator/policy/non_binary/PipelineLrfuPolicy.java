@@ -211,6 +211,9 @@ public final class PipelineLrfuPolicy implements Policy {
   }
 
   private void shrinkPrefixFirstCache(Prefix prefix) {
+    if (prefix.firstCacheChunksAmount == 0) {
+      return;
+    }
     prefix.removeChunkFromFirstCache();
     currentFirstCacheSize--;
 
@@ -224,6 +227,9 @@ public final class PipelineLrfuPolicy implements Policy {
   }
 
   private void extendPrefixFirstCache(Prefix prefix) {
+    if (prefix.firstCacheChunksAmount == prefix.fullItemChunksAmount) {
+      return;
+    }
     prefix.insertChunkToFirstCache();
     currentFirstCacheSize++;
 
@@ -237,6 +243,9 @@ public final class PipelineLrfuPolicy implements Policy {
   }
 
   private void shrinkPrefixSecondCache(Prefix prefix) {
+    if (prefix.secondCacheChunksAmount == 0) {
+      return;
+    }
     prefix.removeChunkFromSecondCache();
     currentSecondCacheSize--;
 
@@ -250,6 +259,9 @@ public final class PipelineLrfuPolicy implements Policy {
   }
 
   private void extendPrefixSecondCache(Prefix prefix) {
+    if (prefix.secondCacheChunksAmount == prefix.fullItemChunksAmount) {
+      return;
+    }
     prefix.insertChunkToSecondCache();
     currentSecondCacheSize++;
 

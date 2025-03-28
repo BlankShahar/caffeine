@@ -33,7 +33,7 @@ public final class LfuPolicy implements Policy {
     this.requests = new ArrayDeque<>();
     currentTime = 0;
 
-    this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize() * 1_000, this::comparePrefixes);
+    this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
     // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
@@ -123,6 +123,9 @@ public final class LfuPolicy implements Policy {
   }
 
   private void shrinkPrefix(Prefix prefix) {
+    if (prefix.isEmpty()) {
+      return;
+    }
     prefix.removeChunk();
     currentCacheSize--;
 
@@ -136,6 +139,9 @@ public final class LfuPolicy implements Policy {
   }
 
   private void extendPrefix(Prefix prefix) {
+    if (prefix.isFull()) {
+      return;
+    }
     prefix.insertChunk();
     currentCacheSize++;
 
