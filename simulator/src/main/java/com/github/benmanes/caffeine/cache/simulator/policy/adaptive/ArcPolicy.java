@@ -86,10 +86,10 @@ public final class ArcPolicy implements Policy {
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     this.policyStats = new PolicyStats(name());
     this.data = new Long2ObjectOpenHashMap<>();
-    this.headT1 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
-    this.headT2 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
-    this.headB1 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
-    this.headB2 = new Node(Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
+    this.headT1 = new Node(1);
+    this.headT2 = new Node(1);
+    this.headB1 = new Node(1);
+    this.headB2 = new Node(1);
 
     source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
     itemToSource = new HashMap<>();
@@ -105,7 +105,7 @@ public final class ArcPolicy implements Policy {
 
     Node node = data.get(event.key());
     if (node == null) {
-      onMiss(event.key(), event.retrievalDelay());
+      onMiss(event.key(), event.retrievalDelay(), event.itemSize());
     } else if (node.type == QueueType.B1) {
       onHitB1(node, event.retrievalDelay());
     } else if (node.type == QueueType.B2) {
@@ -168,7 +168,7 @@ public final class ArcPolicy implements Policy {
     policyStats.addDelay(retrievalDelay);
   }
 
-  private void onMiss(long key, double retrievalDelay) {
+  private void onMiss(long key, double retrievalDelay, long itemSize) {
     // x ∈ L1 ∪ L2 (a miss in DBL(2c) and ARC(c)):
     // case (i) |L1| = c:
     //   If |T1| < c then delete the LRU page of B1 and REPLACE(p).
@@ -178,7 +178,7 @@ public final class ArcPolicy implements Policy {
     //   REPLACE(p) .
     // Put x at the top of T1 and place it in the cache.
 
-    var node = new Node(key, Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
+    var node = new Node(key, itemSize);
     node.type = QueueType.T1;
 
     int sizeL1 = (sizeT1 + sizeB1);

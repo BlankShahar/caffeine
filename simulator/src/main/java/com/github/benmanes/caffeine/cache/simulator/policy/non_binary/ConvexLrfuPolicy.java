@@ -41,7 +41,7 @@ public final class ConvexLrfuPolicy implements Policy {
     alpha = 0.5;
     maxRecency = 0;
     maxFrequency = 0;
-    refinementInterval = 1; //settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
+    refinementInterval = 1; //settings.maximumSize();
     stepSize = 0.05;
     q = 1;
     previousTotalDelay = 0;
@@ -50,11 +50,8 @@ public final class ConvexLrfuPolicy implements Policy {
     this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
-    // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
-    // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
-    //  which we assume is ~1024 chunks per item.
-    // If we assume that a chunk size is 4KB, then an average item size is 4MB.
-    this.maximumCacheSize = settings.maximumSize(); // * Consts.ITEM_CHUNKS_AMOUNT;
+
+    this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
   }
 
@@ -71,7 +68,7 @@ public final class ConvexLrfuPolicy implements Policy {
       onRequest(existingPrefix, event.retrievalDelay());
     } else {
       // prefix missing (full miss)
-      var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, source, currentTime);
+      var newPrefix = new Prefix(itemKey, event.itemSize(), source, currentTime);
       onRequest(newPrefix, event.retrievalDelay());
     }
   }

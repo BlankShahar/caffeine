@@ -78,9 +78,8 @@ public final class SegmentedLruPolicy implements Policy {
     this.admittor = admission.from(config, policyStats);
     var settings = new SegmentedLruSettings(config);
 
-    double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
-    this.headProtected = new Node(itemSize);
-    this.headProbation = new Node(itemSize);
+    this.headProtected = new Node(1);
+    this.headProbation = new Node(1);
     this.data = new Long2ObjectOpenHashMap<>();
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     this.maxProtected = (int) (maximumSize * settings.percentProtected());
@@ -110,7 +109,7 @@ public final class SegmentedLruPolicy implements Policy {
     }
 
     if (node == null) {
-      onMiss(event.key(), event.retrievalDelay());
+      onMiss(event.key(), event.retrievalDelay(), event.itemSize());
     } else {
       onHit(node);
     }
@@ -136,8 +135,8 @@ public final class SegmentedLruPolicy implements Policy {
     policyStats.addLatency(TimeCalculations.calculateTransmissionTime(node.size, Consts.BANDWIDTH));
   }
 
-  private void onMiss(long key, double retrievalDelay) {
-    var node = new Node(key, Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
+  private void onMiss(long key, double retrievalDelay, long itemSize) {
+    var node = new Node(key, itemSize);
     data.put(key, node);
     policyStats.recordMiss();
     policyStats.addLatency(TimeCalculations.calculateSourceLatency(retrievalDelay, node.size, Consts.BANDWIDTH));

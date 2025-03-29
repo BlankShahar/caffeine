@@ -82,11 +82,10 @@ public final class CarPolicy implements Policy {
     source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
     this.itemToSource = new HashMap<>();
 
-    double itemSize = Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE;
-    this.headT1 = new Node(itemSize);
-    this.headT2 = new Node(itemSize);
-    this.headB1 = new Node(itemSize);
-    this.headB2 = new Node(itemSize);
+    this.headT1 = new Node(1);
+    this.headT2 = new Node(1);
+    this.headB1 = new Node(1);
+    this.headB2 = new Node(1);
   }
 
   @Override
@@ -167,7 +166,7 @@ public final class CarPolicy implements Policy {
       // Insert x at the tail of T1
       // Reset the page reference bit of x
       checkState(node == null);
-      node = new Node(key, Consts.ITEM_CHUNKS_AMOUNT * Consts.CHUNK_SIZE);
+      node = new Node(key, 1);
       node.appendToTail(headT1);
       node.type = QueueType.T1;
       data.put(key, node);

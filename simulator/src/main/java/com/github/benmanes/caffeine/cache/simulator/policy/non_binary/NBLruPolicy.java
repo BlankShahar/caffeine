@@ -36,10 +36,7 @@ public final class NBLruPolicy implements Policy {
     this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
-    // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
-    // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
-    //  which we assume is ~1024 chunks per item.
-    // If we assume that a chunk size is 4KB, then an average item size is 4MB.
+
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
   }
@@ -57,7 +54,7 @@ public final class NBLruPolicy implements Policy {
       onRequest(existingPrefix, event.retrievalDelay());
     } else {
       // prefix missing (full miss)
-      var newPrefix = new Prefix(itemKey, Consts.ITEM_CHUNKS_AMOUNT, source, currentTime);
+      var newPrefix = new Prefix(itemKey, event.itemSize(), source, currentTime);
       onRequest(newPrefix, event.retrievalDelay());
     }
   }
