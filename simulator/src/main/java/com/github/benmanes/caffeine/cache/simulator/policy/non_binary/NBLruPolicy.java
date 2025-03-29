@@ -14,18 +14,18 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.Hyperbolic")
-public final class HyperbolicPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.Lru")
+public final class NBLruPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
   final PolicyStats policyStats;
-  final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
+  Source source;
 
-  public HyperbolicPolicy(Config config) {
+  public NBLruPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -33,14 +33,14 @@ public final class HyperbolicPolicy implements Policy {
     this.requests = new ArrayDeque<>();
     currentTime = 0;
 
-    this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize() * 1_000, this::comparePrefixes);
+    this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
     // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
     // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
     //  which we assume is ~1024 chunks per item.
     // If we assume that a chunk size is 4KB, then an average item size is 4MB.
-    this.maximumCacheSize = settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
+    this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
   }
 
@@ -97,7 +97,7 @@ public final class HyperbolicPolicy implements Policy {
     policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
 
     // Total delay and latency
-    double underflowDelay = calculateDelay(sourceDelay, old);
+    double underflowDelay = calculateUnderflowDelay(sourceDelay, old);
     policyStats.addDelay(underflowDelay);
     double latency = calculateLatency(sourceDelay, old);
     policyStats.addLatency(latency);
@@ -110,8 +110,8 @@ public final class HyperbolicPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.hyperbolicScoreAfterInsertion();
-      double sMinus = victim.hyperbolicScoreAfterEviction();
+      double sPlus = prefix.lruScoreAfterInsertion();
+      double sMinus = victim.lruScoreAfterEviction();
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;
@@ -168,7 +168,7 @@ public final class HyperbolicPolicy implements Policy {
    * @param prefix      the prefix of the item
    * @return the delay in seconds
    */
-  private static double calculateDelay(double sourceDelay, Prefix prefix) {
+  private static double calculateUnderflowDelay(double sourceDelay, Prefix prefix) {
     return TimeCalculations.calculateUnderflowDelay(
       sourceDelay,
       prefix.fullItemSizeInMB(),
@@ -196,7 +196,7 @@ public final class HyperbolicPolicy implements Policy {
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
     Prefix p1 = data.get(prefixKey1);
     Prefix p2 = data.get(prefixKey2);
-    return p1.hyperbolicCompareTo(p2);
+    return p1.lruCompareTo(p2);
   }
 
   @Override

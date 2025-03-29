@@ -60,7 +60,7 @@ public class Prefix {
       sizeInMB(),
       Consts.BANDWIDTH
     );
-    return recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+    return recency(NBLruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double lruScoreAfterInsertion() {
@@ -72,19 +72,19 @@ public class Prefix {
       sizeInMB() + Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+    return recency(NBLruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double lruScoreAfterEviction() {
     if (isEmpty()) {
-      return recency(LruPolicy.currentTime); // 1-CDF is 1
+      return recency(NBLruPolicy.currentTime); // 1-CDF is 1
     }
 
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB() - Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return recency(LruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+    return recency(NBLruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double convexLrfuScore(double alpha, double maxFrequency, double maxRecency) {
@@ -128,7 +128,7 @@ public class Prefix {
       sizeInMB(),
       Consts.BANDWIDTH
     );
-    return frequency() * recency(HyperbolicPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+    return frequency() * recency(NBHyperbolicPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double hyperbolicScoreAfterInsertion() {
@@ -140,19 +140,19 @@ public class Prefix {
       sizeInMB() + Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return frequency() * recency(HyperbolicPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+    return frequency() * recency(NBHyperbolicPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double hyperbolicScoreAfterEviction() {
     if (isEmpty()) {
-      return frequency() * recency(HyperbolicPolicy.currentTime); // 1-CDF value is 1
+      return frequency() * recency(NBHyperbolicPolicy.currentTime); // 1-CDF value is 1
     }
 
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       sizeInMB() - Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return frequency() * recency(HyperbolicPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+    return frequency() * recency(NBHyperbolicPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double pipelineFirstCacheScore() {
@@ -161,7 +161,7 @@ public class Prefix {
       firstCacheChunksAmount * Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return recency(PipelineLrfuPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+    return recency(NBHillClimberWindowTinyLfuPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double pipelineFirstCacheScoreAfterInsertion() {
@@ -173,19 +173,19 @@ public class Prefix {
       (firstCacheChunksAmount + 1) * Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return recency(PipelineLrfuPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+    return recency(NBHillClimberWindowTinyLfuPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double pipelineFirstCacheScoreAfterEviction() {
     if (firstCacheChunksAmount == 0) {
-      return recency(PipelineLrfuPolicy.currentTime); // 1-CDF value is 1
+      return recency(NBHillClimberWindowTinyLfuPolicy.currentTime); // 1-CDF value is 1
     }
 
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       (firstCacheChunksAmount - 1) * Consts.CHUNK_SIZE,
       Consts.BANDWIDTH
     );
-    return recency(PipelineLrfuPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+    return recency(NBHillClimberWindowTinyLfuPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public double pipelineSecondCacheScore() {

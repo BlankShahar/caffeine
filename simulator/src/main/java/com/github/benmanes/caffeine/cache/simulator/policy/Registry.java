@@ -31,6 +31,10 @@ import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.UnboundedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.sampled.SampledPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.SAHillClimberWindowTinyLfuPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.SAHyperbolicPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.SALfuPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.SALruPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.WindowTinyLfuPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimberWindowTinyLfuPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.feedback.FeedbackTinyLfuPolicy;
@@ -228,22 +232,18 @@ public final class Registry {
   }
 
   private void registerNonBinary() {
-    register(LruPolicy.class, LruPolicy::new);
-    register(LfuPolicy.class, LfuPolicy::new);
+    register(NBLruPolicy.class, NBLruPolicy::new);
+    register(NBLfuPolicy.class, NBLfuPolicy::new);
+    register(NBHyperbolicPolicy.class, NBHyperbolicPolicy::new);
+    register(NBHillClimberWindowTinyLfuPolicy.class, NBHillClimberWindowTinyLfuPolicy::new);
     register(ConvexLrfuPolicy.class, ConvexLrfuPolicy::new);
-    register(PipelineLrfuPolicy.class, PipelineLrfuPolicy::new);
-    register(HyperbolicPolicy.class, HyperbolicPolicy::new);
   }
 
   private void registerSizeAware() {
-    register(
-      com.github.benmanes.caffeine.cache.simulator.policy.size_aware.LfuPolicy.class,
-      com.github.benmanes.caffeine.cache.simulator.policy.size_aware.LfuPolicy::new
-    );
-    register(
-      com.github.benmanes.caffeine.cache.simulator.policy.size_aware.LruPolicy.class,
-      com.github.benmanes.caffeine.cache.simulator.policy.size_aware.LruPolicy::new
-    );
+    register(SALfuPolicy.class, SALfuPolicy::new);
+    register(SALruPolicy.class, SALruPolicy::new);
+    register(SAHyperbolicPolicy.class, SAHyperbolicPolicy::new);
+    registerMany(SAHillClimberWindowTinyLfuPolicy.class, SAHillClimberWindowTinyLfuPolicy::policies);
   }
 
   @AutoValue

@@ -14,8 +14,8 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.PipelineLrfu")
-public final class PipelineLrfuPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.HillClimberWindowTinyLfuPolicy")
+public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
@@ -30,7 +30,7 @@ public final class PipelineLrfuPolicy implements Policy {
   final Source source;
   final SearchableMinHeap<Long, Prefix> firstCacheScoreMinHeap, secondCacheScoreMinHeap;
 
-  public PipelineLrfuPolicy(Config config) {
+  public NBHillClimberWindowTinyLfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -45,8 +45,8 @@ public final class PipelineLrfuPolicy implements Policy {
     previousTotalDelay = 0;
     currentTotalDelay = 0;
 
-    this.firstCacheScoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize() * 1_000, this::comparePrefixesFirstCache);
-    this.secondCacheScoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize() * 1_000, this::comparePrefixesSecondCache);
+    this.firstCacheScoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixesFirstCache);
+    this.secondCacheScoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixesSecondCache);
 
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
@@ -54,7 +54,7 @@ public final class PipelineLrfuPolicy implements Policy {
     // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
     //  which we assume is ~1024 chunks per item.
     // If we assume that a chunk size is 4KB, then an average item size is 4MB.
-    this.fullCacheSize = settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
+    this.fullCacheSize = settings.maximumSize(); // * Consts.ITEM_CHUNKS_AMOUNT;
     this.firstCacheSize = (long) Math.floor(ratio * fullCacheSize);
     this.secondCacheSize = (long) Math.ceil((1 - ratio) * fullCacheSize);
     this.currentFirstCacheSize = 0;

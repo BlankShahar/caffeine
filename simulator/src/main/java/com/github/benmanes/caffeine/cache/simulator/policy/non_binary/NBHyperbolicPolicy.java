@@ -14,8 +14,8 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.Lfu")
-public final class LfuPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.Hyperbolic")
+public final class NBHyperbolicPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
@@ -25,7 +25,7 @@ public final class LfuPolicy implements Policy {
   final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
 
-  public LfuPolicy(Config config) {
+  public NBHyperbolicPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -110,8 +110,8 @@ public final class LfuPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.lfuScoreAfterInsertion();
-      double sMinus = victim.lfuScoreAfterEviction();
+      double sPlus = prefix.hyperbolicScoreAfterInsertion();
+      double sMinus = victim.hyperbolicScoreAfterEviction();
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;
@@ -196,7 +196,7 @@ public final class LfuPolicy implements Policy {
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
     Prefix p1 = data.get(prefixKey1);
     Prefix p2 = data.get(prefixKey2);
-    return p1.lfuCompareTo(p2);
+    return p1.hyperbolicCompareTo(p2);
   }
 
   @Override

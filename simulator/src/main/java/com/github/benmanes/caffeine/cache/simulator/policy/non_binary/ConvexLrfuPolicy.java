@@ -47,14 +47,14 @@ public final class ConvexLrfuPolicy implements Policy {
     previousTotalDelay = 0;
     currentTotalDelay = 0;
 
-    this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize() * 1_000, this::comparePrefixes);
+    this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
     // Our cache size unit is in chunks, but the settings are in items/entries amount in cache.
     // So to reflect the settings in chunks, we multiply the settings size by the average chunks amount in item -
     //  which we assume is ~1024 chunks per item.
     // If we assume that a chunk size is 4KB, then an average item size is 4MB.
-    this.maximumCacheSize = settings.maximumSize() * Consts.ITEM_CHUNKS_AMOUNT;
+    this.maximumCacheSize = settings.maximumSize(); // * Consts.ITEM_CHUNKS_AMOUNT;
     this.currentCacheSize = 0;
   }
 
