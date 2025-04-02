@@ -200,9 +200,11 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
         // so we need to find victim there
         // remove its last chunk
         // and insert the previous victim chunk to the second cache
-        Prefix victim2 = findSecondCacheVictim();
-        shrinkPrefixSecondCache(victim2);
-        extendPrefixSecondCache(victim1);
+        if (!secondCacheScoreMinHeap.isEmpty()) {
+          Prefix victim2 = findSecondCacheVictim();
+          shrinkPrefixSecondCache(victim2);
+          extendPrefixSecondCache(victim1);
+        }
       }
     }
   }
