@@ -24,14 +24,11 @@ import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
-import java.util.HashMap;
 import java.util.Set;
 
 import static java.util.stream.Collectors.toUnmodifiableSet;
@@ -70,9 +67,6 @@ public final class SegmentedLruPolicy implements Policy {
 
   int sizeProtected;
 
-  private final Source source;
-  private final HashMap<Long, Source> itemToSource;
-
   public SegmentedLruPolicy(Admission admission, Config config) {
     this.policyStats = new PolicyStats(admission.format(name()));
     this.admittor = admission.from(config, policyStats);
@@ -83,9 +77,6 @@ public final class SegmentedLruPolicy implements Policy {
     this.data = new Long2ObjectOpenHashMap<>();
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     this.maxProtected = (int) (maximumSize * settings.percentProtected());
-
-    itemToSource = new HashMap<>();
-    source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
   }
 
   /**
@@ -103,10 +94,6 @@ public final class SegmentedLruPolicy implements Policy {
     policyStats.recordOperation();
     Node node = data.get(event.key());
     admittor.record(event);
-
-    if (!itemToSource.containsKey(event.key())) {
-      itemToSource.put(event.key(), source);
-    }
 
     if (node == null) {
       onMiss(event.key(), event.retrievalDelay(), event.itemSize());

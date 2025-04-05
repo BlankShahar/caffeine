@@ -31,10 +31,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.UnboundedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.sampled.SampledPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.SAHillClimberWindowTinyLfuPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.SAHyperbolicPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.SALfuPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.SALruPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.WindowTinyLfuPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimberWindowTinyLfuPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.feedback.FeedbackTinyLfuPolicy;
@@ -236,6 +233,7 @@ public final class Registry {
     register(NBLfuPolicy.class, NBLfuPolicy::new);
     register(NBHyperbolicPolicy.class, NBHyperbolicPolicy::new);
     register(NBHillClimberWindowTinyLfuPolicy.class, NBHillClimberWindowTinyLfuPolicy::new);
+    register(NBSegmentedLruPolicy.class, NBSegmentedLruPolicy::new);
     register(ConvexLrfuPolicy.class, ConvexLrfuPolicy::new);
   }
 
@@ -244,6 +242,7 @@ public final class Registry {
     register(SALruPolicy.class, SALruPolicy::new);
     register(SAHyperbolicPolicy.class, SAHyperbolicPolicy::new);
     registerMany(SAHillClimberWindowTinyLfuPolicy.class, SAHillClimberWindowTinyLfuPolicy::policies);
+    register(SASegmentedLruPolicy.class, SASegmentedLruPolicy::new);
   }
 
   @AutoValue
