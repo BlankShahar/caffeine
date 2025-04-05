@@ -14,12 +14,19 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 public final class SASegmentedLruPolicy implements Policy {
   final Long2ObjectMap<Node> data;
   final PolicyStats policyStats;
+
   final Node headProtected;
   final Node headProbation;
-  final long maxProtectedSize, maxProbationSize;
+
+  final long maxProtectedSize;
+  final long maxProbationSize;
   final long maximumSize;
 
+  /** Sum of the sizes in the PROTECTED queue. */
   long sizeProtected;
+  /** Sum of the sizes in the PROBATION queue. */
+  long sizeProbation;
+  /** Sum of the sizes of all cached entries (protected + probation). */
   long currentSize;
 
   public SASegmentedLruPolicy(Config config) {
@@ -28,7 +35,8 @@ public final class SASegmentedLruPolicy implements Policy {
 
     this.data = new Long2ObjectOpenHashMap<>();
     this.maximumSize = settings.maximumSize();
-    // For example, we assume 80% of the cache size is "protected".
+
+    // e.g., 80% of the cache is protected, 20% probation
     this.maxProtectedSize = (long) (maximumSize * 0.8);
     this.maxProbationSize = maximumSize - maxProtectedSize;
 
@@ -55,86 +63,123 @@ public final class SASegmentedLruPolicy implements Policy {
     }
   }
 
+  /**
+   * Handle a cache hit.
+   * If the node is in probation, promote it to protected (if capacity allows).
+   */
   private void onHit(Node node) {
     if (node.type == QueueType.PROTECTED) {
-      // Already in protected queue, simply move it to MRU position
+      // Already in protected => move to MRU
       node.moveToTail(headProtected);
     } else {
-      // It's in probation, so promote it
+      // It's in probation => attempt promotion to protected
       long neededSize = node.size;
-      if (sizeProtected + neededSize > maxProtectedSize) return;
-      demoteProtectedUntilFits(neededSize);
-      sizeProtected += node.size;
-      node.remove(); // remove from probation
-      node.type = QueueType.PROTECTED;
-      node.appendToTail(headProtected);
+      if (sizeProtected + neededSize <= maxProtectedSize) {
+        demoteProtectedUntilFits(neededSize);
+
+        // Remove from probation tracking
+        sizeProbation -= node.size;
+        node.remove();
+
+        // Switch type & add to protected
+        node.type = QueueType.PROTECTED;
+        node.appendToTail(headProtected);
+        sizeProtected += node.size;
+      } else {
+        // Not enough room => remain in probation, but move to MRU
+        node.moveToTail(headProbation);
+      }
     }
     policyStats.recordHit();
     policyStats.addLatency(TimeCalculations.calculateTransmissionTime(node.size, Consts.BANDWIDTH));
   }
 
+  /**
+   * Handle a cache miss by inserting a new node in probation (if it fits).
+   */
   private void onMiss(long key, double retrievalDelay, long itemSize) {
+    // Latency cost from the source
     policyStats.addLatency(TimeCalculations.calculateSourceLatency(retrievalDelay, itemSize, Consts.BANDWIDTH));
     policyStats.addDelay(retrievalDelay);
 
-    // Optional: if an item is bigger than the entire cache, skip caching it
+    // If item is bigger than the entire probation region, skip
     if (itemSize > maxProbationSize) {
-      policyStats.recordOperation(); // counted as an operation, no insert
+      policyStats.recordOperation(); // no insert
       return;
     }
 
     Node node = new Node(key, itemSize);
     node.type = QueueType.PROBATION;
     data.put(key, node);
-    currentSize += itemSize;
 
+    // Add to probation
     node.appendToTail(headProbation);
+    sizeProbation += itemSize;
 
+    currentSize += itemSize;
     policyStats.recordMiss();
+
     evictIfNeeded();
   }
 
   /**
-   * Ensures the overall cache size does not exceed {@link #maximumSize}.
-   * We always evict from the probation queue first. If the probation
-   * queue is empty, then we evict from the protected queue.
+   * Evict items while we're over capacity.
+   * - If there's something in probation (sizeProbation > 0), evict from there.
+   * - Otherwise, evict from protected.
    */
   private void evictIfNeeded() {
     while (currentSize > maximumSize) {
-      Node victim = (headProbation.next != headProbation)
-        ? headProbation.next // eviction from probation first
-        : (headProtected.next != headProtected)
-        ? headProtected.next
-        : null;
-      if (victim == null) {
-        // No more candidates to evict
-        break;
+      Node victim;
+      if (sizeProbation > 0) {
+        // Evict from probation
+        victim = headProbation.next;
+        if (victim == headProbation) {
+          // Shouldn't happen, but let's break if it does
+          break;
+        }
+      } else {
+        // Evict from protected
+        victim = headProtected.next;
+        if (victim == headProtected) {
+          // No more items
+          break;
+        }
       }
       evictEntry(victim);
     }
   }
 
   /**
-   * Demotes protected items until there's enough free space in the
-   * protected segment for a newly promoted item.
+   * Demote protected items until there's enough free space in PROTECTED
+   * for the newly promoted item.
    */
   private void demoteProtectedUntilFits(long neededSize) {
-    while (sizeProtected + neededSize > sizeProtected
+    while ((sizeProtected + neededSize) > maxProtectedSize
       && headProtected.next != headProtected) {
       Node demote = headProtected.next; // LRU in protected
       demote.remove();
       demote.type = QueueType.PROBATION;
+
+      // Move to probation's MRU
       demote.appendToTail(headProbation);
       sizeProtected -= demote.size;
+      sizeProbation += demote.size;
     }
   }
 
+  /**
+   * Evict a given node (remove from data structure + queues).
+   */
   private void evictEntry(Node node) {
     data.remove(node.key);
     currentSize -= node.size;
+
     if (node.type == QueueType.PROTECTED) {
       sizeProtected -= node.size;
+    } else {
+      sizeProbation -= node.size;
     }
+
     node.remove();
     policyStats.recordEviction();
   }
@@ -152,6 +197,7 @@ public final class SASegmentedLruPolicy implements Policy {
   static final class Node {
     final long key;
     final long size;
+
     Node prev;
     Node next;
     QueueType type;
@@ -165,9 +211,7 @@ public final class SASegmentedLruPolicy implements Policy {
       this.size = size;
     }
 
-    /**
-     * Insert at the tail (MRU) of the given 'head' sentinel.
-     */
+    /** Insert at the tail (MRU) of the given 'head' sentinel. */
     void appendToTail(Node head) {
       Node tail = head.prev;
       tail.next = this;
@@ -176,17 +220,13 @@ public final class SASegmentedLruPolicy implements Policy {
       head.prev = this;
     }
 
-    /**
-     * Move this node to the tail (MRU) of the given 'head' sentinel.
-     */
+    /** Move this node to the tail (MRU) of the given 'head' sentinel. */
     void moveToTail(Node head) {
       remove();
       appendToTail(head);
     }
 
-    /**
-     * Unlinks this node from whatever list it's in.
-     */
+    /** Unlinks this node from its doubly-linked list. */
     void remove() {
       if (prev != null && next != null) {
         prev.next = next;
