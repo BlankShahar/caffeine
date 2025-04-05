@@ -14,7 +14,7 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.Lru")
+@Policy.PolicySpec(name = "non-binary.LRU")
 public final class NBLruPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;

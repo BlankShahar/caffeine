@@ -9,7 +9,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 
-@Policy.PolicySpec(name = "size-aware.Lfu")
+@Policy.PolicySpec(name = "size-aware.LFU")
 public final class SALfuPolicy implements Policy {
   final PolicyStats policyStats;
   final Long2ObjectMap<Item> data;

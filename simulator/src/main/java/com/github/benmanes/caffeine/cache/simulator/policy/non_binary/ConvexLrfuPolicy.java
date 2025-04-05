@@ -14,7 +14,7 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.ConvexLrfu")
+@Policy.PolicySpec(name = "non-binary.ConvexLRFU")
 public final class ConvexLrfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
