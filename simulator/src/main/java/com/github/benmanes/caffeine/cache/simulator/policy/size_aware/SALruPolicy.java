@@ -8,7 +8,7 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
-@Policy.PolicySpec(name = "size-aware.RU")
+@Policy.PolicySpec(name = "size-aware.LRU")
 public final class SALruPolicy implements Policy {
   final PolicyStats policyStats;
   final Long2ObjectMap<Item> data;

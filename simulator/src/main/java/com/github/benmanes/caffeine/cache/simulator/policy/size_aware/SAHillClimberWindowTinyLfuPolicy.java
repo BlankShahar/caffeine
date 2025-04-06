@@ -48,7 +48,7 @@ import static java.util.stream.Collectors.toSet;
  * @author ben.manes@gmail.com (Ben Manes)
  */
 @SuppressWarnings("PMD.TooManyFields")
-@Policy.PolicySpec(name = "size-aware.HillClimberWindowTinyLfuPolicy")
+@Policy.PolicySpec(name = "size-aware.HillClimberWindowTinyLFU")
 public class SAHillClimberWindowTinyLfuPolicy implements Policy {
   protected final double initialPercentMain;
   protected final HillClimberType strategy;
@@ -144,6 +144,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     } else {
       queue = node.queue;
       policyStats.recordWeightedHit(weight);
+      policyStats.addDelay(0);
       if (queue == WINDOW) {
         onWindowHit(node);
       } else if (queue == PROBATION) {

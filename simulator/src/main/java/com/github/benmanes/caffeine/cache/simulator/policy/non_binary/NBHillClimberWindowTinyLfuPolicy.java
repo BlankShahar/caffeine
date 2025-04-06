@@ -14,7 +14,7 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.HillClimberWindowTinyLfuPolicy")
+@Policy.PolicySpec(name = "non-binary.HillClimberWindowTinyLFU")
 public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
@@ -40,7 +40,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
 
     q = 1;
     ratio = 0.5;
-    refinementInterval = 1;
+    refinementInterval = 1; // settings.maximumSize();
     stepSize = 0.05;
     previousTotalDelay = 0;
     currentTotalDelay = 0;
@@ -154,7 +154,6 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     }
   }
 
-
   private void waterFill(Prefix prefix) {
     while (!prefix.isFull() && currentFirstCacheSize < firstCacheSize) {
       extendPrefixFirstCache(prefix);
@@ -164,6 +163,20 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     }
 
     while (true) {
+      if (firstCacheSize == 0) { // If there's only a second cache, act as regular non-binary
+        Prefix victim = findSecondCacheVictim();
+        double sPlus = prefix.lfuScoreAfterInsertion();
+        double sMinus = victim.lfuScoreAfterEviction();
+
+        if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
+          break;
+        }
+
+        shrinkPrefixSecondCache(victim);
+        extendPrefixSecondCache(prefix);
+        continue;
+      }
+
       Prefix victim1 = findFirstCacheVictim();
       double sPlus = prefix.pipelineFirstCacheScoreAfterInsertion();
       double sMinus = victim1.pipelineFirstCacheScoreAfterEviction();
@@ -226,7 +239,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private void extendPrefixFirstCache(Prefix prefix) {
-    if (prefix.firstCacheChunksAmount == prefix.fullItemChunksAmount) {
+    if (prefix.isFull()) {
       return;
     }
     prefix.insertChunkToFirstCache();
@@ -258,7 +271,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private void extendPrefixSecondCache(Prefix prefix) {
-    if (prefix.secondCacheChunksAmount == prefix.fullItemChunksAmount) {
+    if (prefix.isFull()) {
       return;
     }
     prefix.insertChunkToSecondCache();
@@ -292,12 +305,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
    * @return the delay in seconds
    */
   private static double calculateDelay(double sourceDelay, Prefix prefix) {
-    return TimeCalculations.calculateUnderflowDelay(
-      sourceDelay,
-      prefix.fullItemSizeInMB(),
-      prefix.sizeInMB(),
-      Consts.BANDWIDTH
-    );
+    return TimeCalculations.calculateUnderflowDelay(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
   }
 
   /**
@@ -308,12 +316,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
    * @return the latency in seconds
    */
   private static double calculateLatency(double sourceDelay, Prefix prefix) {
-    return TimeCalculations.calculateNonBinaryLatency(
-      sourceDelay,
-      prefix.fullItemSizeInMB(),
-      prefix.sizeInMB(),
-      Consts.BANDWIDTH
-    );
+    return TimeCalculations.calculateNonBinaryLatency(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
   }
 
   public int comparePrefixesFirstCache(long prefixKey1, long prefixKey2) {

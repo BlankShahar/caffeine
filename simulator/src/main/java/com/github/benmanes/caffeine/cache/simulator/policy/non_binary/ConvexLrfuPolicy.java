@@ -41,7 +41,7 @@ public final class ConvexLrfuPolicy implements Policy {
     alpha = 0.5;
     maxRecency = 0;
     maxFrequency = 0;
-    refinementInterval = 1; //settings.maximumSize();
+    refinementInterval = 1; // settings.maximumSize();
     stepSize = 0.05;
     q = 1;
     previousTotalDelay = 0;
@@ -87,7 +87,8 @@ public final class ConvexLrfuPolicy implements Policy {
   private void rebuildHeap() {
     scoreMinHeap.clear();
     for (long itemKey : data.keySet()) {
-      scoreMinHeap.insert(itemKey, data.get(itemKey));
+      Prefix prefix = data.get(itemKey);
+      if (prefix.chunksAmount > 0) scoreMinHeap.insert(itemKey, data.get(itemKey));
     }
   }
 
