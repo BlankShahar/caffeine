@@ -144,7 +144,6 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     } else {
       queue = node.queue;
       policyStats.recordWeightedHit(weight);
-      policyStats.addDelay(0);
       if (queue == WINDOW) {
         onWindowHit(node);
       } else if (queue == PROBATION) {
@@ -413,6 +412,8 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     checkState(actualProbationSize == calculatedProbationSize,
       "Probation: %s != %s", actualProbationSize, calculatedProbationSize);
     checkState(sizeData <= maximumSize, "Maximum: %s > %s", sizeData, maximumSize);
+
+    System.out.println(getPolicyName() + ": total delay=" + policyStats.totalDelay());
   }
 
   /**
