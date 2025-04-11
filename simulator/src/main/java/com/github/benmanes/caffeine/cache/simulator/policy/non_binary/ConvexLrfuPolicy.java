@@ -251,4 +251,99 @@ public final class ConvexLrfuPolicy implements Policy {
   public String name() {
     return Policy.super.name();
   }
+
+  static public class Prefix {
+    final long itemKey, fullItemChunksAmount;
+    final Source source;
+    long chunksAmount;
+    long requestsCountInPeriod;
+    long lastRequestTime;
+
+    public Prefix(long itemKey, long fullItemChunksAmount, Source source, long currentTime) {
+      this.itemKey = itemKey;
+      this.fullItemChunksAmount = fullItemChunksAmount;
+      this.source = source;
+      this.requestsCountInPeriod = 0;
+      this.lastRequestTime = currentTime;
+      this.chunksAmount = 0;
+    }
+
+    public double convexLrfuScore(double alpha, double maxFrequency, double maxRecency) {
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        sizeInMB(),
+        Consts.BANDWIDTH
+      );
+      return alpha * recency(ConvexLrfuPolicy.currentTime) / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
+        (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
+    }
+
+    public double convexLrfuScoreAfterInsertion(double alpha, double maxFrequency, double maxRecency) {
+      if (isFull()) {
+        return 0; // 1-CDF value is 0
+      }
+
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        sizeInMB() + Consts.CHUNK_SIZE,
+        Consts.BANDWIDTH
+      );
+      return alpha * recency(ConvexLrfuPolicy.currentTime) / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
+        (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
+    }
+
+    public double convexLrfuScoreAfterEviction(double alpha, double maxFrequency, double maxRecency) {
+      if (isEmpty()) { // 1-CDF is 1
+        return alpha * recency(ConvexLrfuPolicy.currentTime) / maxRecency + (1 - alpha) * frequency() / maxFrequency;
+      }
+
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        sizeInMB() - Consts.CHUNK_SIZE,
+        Consts.BANDWIDTH
+      );
+      return alpha * recency(ConvexLrfuPolicy.currentTime) / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
+        (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
+    }
+
+    public double frequency() {
+      return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
+    }
+
+    public double recency(long currentTime) {
+      return (double) 1 / (currentTime - lastRequestTime + 1);
+    }
+
+    public void insertChunk() {
+      if (!isFull()) {
+        chunksAmount++;
+      }
+    }
+
+    public void removeChunk() {
+      if (chunksAmount > 0) {
+        chunksAmount--;
+      }
+    }
+
+    public double sizeInMB() {
+      return chunksAmount * Consts.CHUNK_SIZE;
+    }
+
+    public double fullItemSizeInMB() {
+      return fullItemChunksAmount * Consts.CHUNK_SIZE;
+    }
+
+    public boolean isFull() {
+      return chunksAmount == fullItemChunksAmount;
+    }
+
+    public boolean isEmpty() {
+      return chunksAmount == 0;
+    }
+
+    public int convexLrfuCompareTo(Prefix other) {
+      return Double.compare(
+        this.convexLrfuScore(ConvexLrfuPolicy.alpha, ConvexLrfuPolicy.maxRecency, ConvexLrfuPolicy.maxFrequency),
+        other.convexLrfuScore(ConvexLrfuPolicy.alpha, ConvexLrfuPolicy.maxRecency, ConvexLrfuPolicy.maxFrequency)
+      );
+    }
+  }
 }

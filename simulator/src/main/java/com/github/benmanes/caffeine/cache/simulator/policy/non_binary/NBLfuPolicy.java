@@ -18,7 +18,6 @@ import java.util.Queue;
 public final class NBLfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
-  static long currentTime;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
   final PolicyStats policyStats;
@@ -31,11 +30,9 @@ public final class NBLfuPolicy implements Policy {
 
     this.data = new Long2ObjectOpenHashMap<>();
     this.requests = new ArrayDeque<>();
-    currentTime = 0;
 
     this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
-
 
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
@@ -46,15 +43,13 @@ public final class NBLfuPolicy implements Policy {
     long itemKey = event.key();
     var existingPrefix = data.getOrDefault(itemKey, null);
     policyStats.recordOperation();
-    currentTime++;
 
     if (existingPrefix != null) {
       // prefix exist (partial hit)
-      existingPrefix.lastRequestTime = currentTime;
       onRequest(existingPrefix, event.retrievalDelay());
     } else {
       // prefix missing (full miss)
-      var newPrefix = new Prefix(itemKey, event.itemSize(), source, currentTime);
+      var newPrefix = new Prefix(itemKey, event.itemSize(), source);
       onRequest(newPrefix, event.retrievalDelay());
     }
   }
@@ -210,4 +205,89 @@ public final class NBLfuPolicy implements Policy {
   public String name() {
     return Policy.super.name();
   }
+
+  static public class Prefix {
+    final long itemKey, fullItemChunksAmount;
+    final Source source;
+    long chunksAmount;
+    long requestsCountInPeriod;
+
+    public Prefix(long itemKey, long fullItemChunksAmount, Source source) {
+      this.itemKey = itemKey;
+      this.fullItemChunksAmount = fullItemChunksAmount;
+      this.source = source;
+      this.requestsCountInPeriod = 0;
+      this.chunksAmount = 0;
+    }
+
+    public double lfuScore() {
+      // Idea - frequency times the probability of not experiencing delay
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        sizeInMB(),
+        Consts.BANDWIDTH
+      );
+      return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
+    }
+
+    public double lfuScoreAfterInsertion() {
+      if (isFull()) {
+        return 0; // 1-CDF value is 0
+      }
+
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        sizeInMB() + Consts.CHUNK_SIZE,
+        Consts.BANDWIDTH
+      );
+      return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
+    }
+
+    public double lfuScoreAfterEviction() {
+      if (isEmpty()) {
+        return frequency(); // 1-CDF value is 1
+      }
+
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        sizeInMB() - Consts.CHUNK_SIZE,
+        Consts.BANDWIDTH
+      );
+      return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
+    }
+
+    public double frequency() {
+      return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
+    }
+
+    public void insertChunk() {
+      if (!isFull()) {
+        chunksAmount++;
+      }
+    }
+
+    public void removeChunk() {
+      if (chunksAmount > 0) {
+        chunksAmount--;
+      }
+    }
+
+    public double sizeInMB() {
+      return chunksAmount * Consts.CHUNK_SIZE;
+    }
+
+    public double fullItemSizeInMB() {
+      return fullItemChunksAmount * Consts.CHUNK_SIZE;
+    }
+
+    public boolean isFull() {
+      return chunksAmount == fullItemChunksAmount;
+    }
+
+    public boolean isEmpty() {
+      return chunksAmount == 0;
+    }
+
+    public int lfuCompareTo(Prefix other) {
+      return Double.compare(this.lfuScore(), other.lfuScore());
+    }
+  }
+
 }

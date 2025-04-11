@@ -210,4 +210,94 @@ public final class NBHyperbolicPolicy implements Policy {
   public String name() {
     return Policy.super.name();
   }
+
+  static public class Prefix {
+    final long itemKey, fullItemChunksAmount;
+    final Source source;
+    long chunksAmount;
+    long requestsCountInPeriod;
+    long lastRequestTime;
+
+    public Prefix(long itemKey, long fullItemChunksAmount, Source source, long currentTime) {
+      this.itemKey = itemKey;
+      this.fullItemChunksAmount = fullItemChunksAmount;
+      this.source = source;
+      this.requestsCountInPeriod = 0;
+      this.lastRequestTime = currentTime;
+      this.chunksAmount = 0;
+    }
+
+    public double hyperbolicScore() {
+      // Idea - frequency times recency times the probability of not experiencing delay
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        sizeInMB(),
+        Consts.BANDWIDTH
+      );
+      return frequency() * recency(NBHyperbolicPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+    }
+
+    public double hyperbolicScoreAfterInsertion() {
+      if (isFull()) {
+        return 0; // 1-CDF value is 0
+      }
+
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        sizeInMB() + Consts.CHUNK_SIZE,
+        Consts.BANDWIDTH
+      );
+      return frequency() * recency(NBHyperbolicPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+    }
+
+    public double hyperbolicScoreAfterEviction() {
+      if (isEmpty()) {
+        return frequency() * recency(NBHyperbolicPolicy.currentTime); // 1-CDF value is 1
+      }
+
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        sizeInMB() - Consts.CHUNK_SIZE,
+        Consts.BANDWIDTH
+      );
+      return frequency() * recency(NBHyperbolicPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+    }
+
+    public double frequency() {
+      return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
+    }
+
+    public double recency(long currentTime) {
+      return (double) 1 / (currentTime - lastRequestTime + 1);
+    }
+
+    public void insertChunk() {
+      if (!isFull()) {
+        chunksAmount++;
+      }
+    }
+
+    public void removeChunk() {
+      if (chunksAmount > 0) {
+        chunksAmount--;
+      }
+    }
+
+    public double sizeInMB() {
+      return chunksAmount * Consts.CHUNK_SIZE;
+    }
+
+    public double fullItemSizeInMB() {
+      return fullItemChunksAmount * Consts.CHUNK_SIZE;
+    }
+
+    public boolean isFull() {
+      return chunksAmount == fullItemChunksAmount;
+    }
+
+    public boolean isEmpty() {
+      return chunksAmount == 0;
+    }
+
+    public int hyperbolicCompareTo(Prefix other) {
+      return Double.compare(this.hyperbolicScore(), other.hyperbolicScore());
+    }
+  }
 }

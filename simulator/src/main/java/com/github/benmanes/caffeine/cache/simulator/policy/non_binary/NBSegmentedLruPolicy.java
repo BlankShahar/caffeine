@@ -88,7 +88,6 @@ public final class NBSegmentedLruPolicy implements Policy {
    * we do not promote it (same as original logic).
    */
   private void promoteToProtected(Prefix prefix) {
-    // FIX: Check if the item is simply too large to fit in the protected area at all
     if (prefix.chunksAmount > maxProtectedSize) {
       return;
     }
