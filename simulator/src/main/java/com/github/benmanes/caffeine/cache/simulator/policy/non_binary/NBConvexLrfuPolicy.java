@@ -15,7 +15,7 @@ import java.util.Queue;
 
 
 @Policy.PolicySpec(name = "non-binary.ConvexLRFU")
-public final class ConvexLrfuPolicy implements Policy {
+public final class NBConvexLrfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
@@ -30,7 +30,7 @@ public final class ConvexLrfuPolicy implements Policy {
   final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
 
-  public ConvexLrfuPolicy(Config config) {
+  public NBConvexLrfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -94,7 +94,7 @@ public final class ConvexLrfuPolicy implements Policy {
 
   private void updateParameters(Prefix prefix, double retrievalDelay) {
     currentTotalDelay += retrievalDelay;
-    double recency = prefix.recency(currentTime);
+    double recency = prefix.recency();
     double frequency = prefix.frequency();
 
     if (recency > maxRecency) {
@@ -158,8 +158,8 @@ public final class ConvexLrfuPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.convexLrfuScoreAfterInsertion(alpha, maxFrequency, maxRecency);
-      double sMinus = victim.convexLrfuScoreAfterEviction(alpha, maxFrequency, maxRecency);
+      double sPlus = prefix.convexLrfuScoreAfterInsertion();
+      double sMinus = victim.convexLrfuScoreAfterEviction();
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;
@@ -268,16 +268,16 @@ public final class ConvexLrfuPolicy implements Policy {
       this.chunksAmount = 0;
     }
 
-    public double convexLrfuScore(double alpha, double maxFrequency, double maxRecency) {
+    public double convexLrfuScore() {
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB(),
         Consts.BANDWIDTH
       );
-      return alpha * recency(ConvexLrfuPolicy.currentTime) / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
+      return alpha * recency() / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
         (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
-    public double convexLrfuScoreAfterInsertion(double alpha, double maxFrequency, double maxRecency) {
+    public double convexLrfuScoreAfterInsertion() {
       if (isFull()) {
         return 0; // 1-CDF value is 0
       }
@@ -286,20 +286,20 @@ public final class ConvexLrfuPolicy implements Policy {
         sizeInMB() + Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return alpha * recency(ConvexLrfuPolicy.currentTime) / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
+      return alpha * recency() / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
         (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
-    public double convexLrfuScoreAfterEviction(double alpha, double maxFrequency, double maxRecency) {
+    public double convexLrfuScoreAfterEviction() {
       if (isEmpty()) { // 1-CDF is 1
-        return alpha * recency(ConvexLrfuPolicy.currentTime) / maxRecency + (1 - alpha) * frequency() / maxFrequency;
+        return alpha * recency() / maxRecency + (1 - alpha) * frequency() / maxFrequency;
       }
 
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB() - Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return alpha * recency(ConvexLrfuPolicy.currentTime) / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
+      return alpha * recency() / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
         (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
@@ -307,7 +307,7 @@ public final class ConvexLrfuPolicy implements Policy {
       return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
     }
 
-    public double recency(long currentTime) {
+    public double recency() {
       return (double) 1 / (currentTime - lastRequestTime + 1);
     }
 
@@ -340,10 +340,7 @@ public final class ConvexLrfuPolicy implements Policy {
     }
 
     public int convexLrfuCompareTo(Prefix other) {
-      return Double.compare(
-        this.convexLrfuScore(ConvexLrfuPolicy.alpha, ConvexLrfuPolicy.maxRecency, ConvexLrfuPolicy.maxFrequency),
-        other.convexLrfuScore(ConvexLrfuPolicy.alpha, ConvexLrfuPolicy.maxRecency, ConvexLrfuPolicy.maxFrequency)
-      );
+      return Double.compare(this.convexLrfuScore(), other.convexLrfuScore());
     }
   }
 }

@@ -233,7 +233,7 @@ public final class NBHyperbolicPolicy implements Policy {
         sizeInMB(),
         Consts.BANDWIDTH
       );
-      return frequency() * recency(NBHyperbolicPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+      return frequency() * recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public double hyperbolicScoreAfterInsertion() {
@@ -245,26 +245,26 @@ public final class NBHyperbolicPolicy implements Policy {
         sizeInMB() + Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return frequency() * recency(NBHyperbolicPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+      return frequency() * recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public double hyperbolicScoreAfterEviction() {
       if (isEmpty()) {
-        return frequency() * recency(NBHyperbolicPolicy.currentTime); // 1-CDF value is 1
+        return frequency() * recency(); // 1-CDF value is 1
       }
 
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB() - Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return frequency() * recency(NBHyperbolicPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+      return frequency() * recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public double frequency() {
       return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
     }
 
-    public double recency(long currentTime) {
+    public double recency() {
       return (double) 1 / (currentTime - lastRequestTime + 1);
     }
 

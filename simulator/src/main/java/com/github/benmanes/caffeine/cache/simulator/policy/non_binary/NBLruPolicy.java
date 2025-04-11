@@ -233,7 +233,7 @@ public final class NBLruPolicy implements Policy {
         sizeInMB(),
         Consts.BANDWIDTH
       );
-      return recency(NBLruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public double lruScoreAfterInsertion() {
@@ -245,22 +245,22 @@ public final class NBLruPolicy implements Policy {
         sizeInMB() + Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return recency(NBLruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public double lruScoreAfterEviction() {
       if (isEmpty()) {
-        return recency(NBLruPolicy.currentTime); // 1-CDF is 1
+        return recency(); // 1-CDF is 1
       }
 
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB() - Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return recency(NBLruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
-    public double recency(long currentTime) {
+    public double recency() {
       return (double) 1 / (currentTime - lastRequestTime + 1);
     }
 

@@ -230,10 +230,10 @@ public final class BBNBLruPolicy implements Policy {
         sizeInMB(),
         Consts.BANDWIDTH
       );
-      return recency(NBLruPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
-    public double recency(long currentTime) {
+    public double recency() {
       return (double) 1 / (currentTime - lastRequestTime + 1);
     }
 

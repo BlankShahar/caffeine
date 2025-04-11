@@ -404,7 +404,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
         firstCacheChunksAmount * Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return recency(NBHillClimberWindowTinyLfuPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public double pipelineFirstCacheScoreAfterInsertion() {
@@ -416,19 +416,19 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
         (firstCacheChunksAmount + 1) * Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return recency(NBHillClimberWindowTinyLfuPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public double pipelineFirstCacheScoreAfterEviction() {
       if (firstCacheChunksAmount == 0) {
-        return recency(NBHillClimberWindowTinyLfuPolicy.currentTime); // 1-CDF value is 1
+        return recency(); // 1-CDF value is 1
       }
 
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         (firstCacheChunksAmount - 1) * Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return recency(NBHillClimberWindowTinyLfuPolicy.currentTime) * (1 - source.calculateCDF(prefixTransmissionTime));
+      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public double pipelineSecondCacheScore() {
@@ -447,7 +447,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
       return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
     }
 
-    public double recency(long currentTime) {
+    public double recency() {
       return (double) 1 / (currentTime - lastRequestTime + 1);
     }
 

@@ -235,7 +235,7 @@ public final class Registry {
     register(NBHillClimberWindowTinyLfuPolicy.class, NBHillClimberWindowTinyLfuPolicy::new);
     register(NBSegmentedLruPolicy.class, NBSegmentedLruPolicy::new);
     register(NBArcPolicy.class, NBArcPolicy::new);
-    register(ConvexLrfuPolicy.class, ConvexLrfuPolicy::new);
+    register(NBConvexLrfuPolicy.class, NBConvexLrfuPolicy::new);
 
     register(BBNBLruPolicy.class, BBNBLruPolicy::new);
     register(BBNBLfuPolicy.class, BBNBLfuPolicy::new);
