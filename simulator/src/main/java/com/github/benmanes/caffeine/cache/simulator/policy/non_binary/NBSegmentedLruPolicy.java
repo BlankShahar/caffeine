@@ -46,8 +46,8 @@ public final class NBSegmentedLruPolicy implements Policy {
     this.currentProbationSize = 0;
     this.currentProtectedSize = 0;
 
-    this.probationHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::compareProbation);
-    this.protectedHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::compareProtected);
+    this.probationHeap = new SearchableMinHeap<>((int) maxProbationSize, this::compareProbation);
+    this.protectedHeap = new SearchableMinHeap<>((int) maxProtectedSize, this::compareProtected);
 
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
   }

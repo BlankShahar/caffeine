@@ -74,7 +74,7 @@ public final class ClairvoyantPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     if (recorder == null) {
-      recorder = event.isPenaltyAware() ? new EventRecorder() : new KeyOnlyRecorder();
+      recorder = new EventRecorder();
     }
 
     tick++;
