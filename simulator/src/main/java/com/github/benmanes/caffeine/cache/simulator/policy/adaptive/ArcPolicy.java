@@ -20,17 +20,11 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import org.checkerframework.checker.nullness.qual.Nullable;
-
-import java.util.HashMap;
 
 import static com.google.common.base.Preconditions.checkState;
 
@@ -78,9 +72,6 @@ public final class ArcPolicy implements Policy {
   private int sizeB2;
   private int p;
 
-  private final Source source;
-  private final HashMap<Long, Source> itemToSource;
-
   public ArcPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.maximumSize = Math.toIntExact(settings.maximumSize());
@@ -90,18 +81,11 @@ public final class ArcPolicy implements Policy {
     this.headT2 = new Node(1);
     this.headB1 = new Node(1);
     this.headB2 = new Node(1);
-
-    source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
-    itemToSource = new HashMap<>();
   }
 
   @Override
   public void record(AccessEvent event) {
     policyStats.recordOperation();
-
-    if (!itemToSource.containsKey(event.key())) {
-      itemToSource.put(event.key(), source);
-    }
 
     Node node = data.get(event.key());
     if (node == null) {

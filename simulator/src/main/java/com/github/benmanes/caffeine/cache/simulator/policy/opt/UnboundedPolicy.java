@@ -20,16 +20,11 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.google.common.primitives.Ints;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 
-import java.util.HashMap;
 import java.util.Set;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
@@ -46,9 +41,6 @@ public final class UnboundedPolicy implements Policy {
   private final PolicyStats policyStats;
   private final LongSet data;
 
-  private final Source source;
-  private final HashMap<Long, Source> itemToSource;
-
   public UnboundedPolicy(Config config, Set<Characteristic> characteristics) {
     var settings = new BasicSettings(config);
     int initialSize = characteristics.contains(WEIGHTED)
@@ -56,9 +48,6 @@ public final class UnboundedPolicy implements Policy {
       : Ints.saturatedCast(settings.maximumSize());
     data = new LongOpenHashSet(initialSize);
     policyStats = new PolicyStats(name());
-
-    source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
-    itemToSource = new HashMap<>();
   }
 
   @Override
@@ -70,10 +59,6 @@ public final class UnboundedPolicy implements Policy {
   public void record(AccessEvent event) {
     policyStats.recordOperation();
     long key = event.key();
-
-    if (!itemToSource.containsKey(key)) {
-      itemToSource.put(event.key(), source);
-    }
 
     if (data.add(key)) {
       policyStats.recordWeightedMiss(event.weight());

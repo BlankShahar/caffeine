@@ -20,10 +20,6 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.doubles.DoubleArrayFIFOQueue;
 import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;
@@ -35,7 +31,6 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
 
 import java.util.ArrayDeque;
-import java.util.HashMap;
 import java.util.Queue;
 
 /**
@@ -56,9 +51,6 @@ public final class ClairvoyantPolicy implements Policy {
   private int infiniteTimestamp;
   private int tick;
 
-  private final Source source;
-  private final HashMap<Long, Source> itemToSource;
-
   public ClairvoyantPolicy(Config config) {
     var settings = new BasicSettings(config);
     maximumSize = Math.toIntExact(settings.maximumSize());
@@ -66,9 +58,6 @@ public final class ClairvoyantPolicy implements Policy {
     policyStats = new PolicyStats(name());
     infiniteTimestamp = Integer.MAX_VALUE;
     data = new IntRBTreeSet();
-
-    source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
-    itemToSource = new HashMap<>();
   }
 
   @Override
@@ -112,10 +101,6 @@ public final class ClairvoyantPolicy implements Policy {
       accessTimes.remove(key);
     } else {
       data.add(times.firstInt());
-    }
-
-    if (!itemToSource.containsKey(key)) {
-      itemToSource.put(key, source);
     }
 
     if (found) {

@@ -15,29 +15,19 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.adaptive;
 
-import static com.google.common.base.Preconditions.checkState;
-
+import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
-import org.checkerframework.checker.nullness.qual.Nullable;
-
-import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
-import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.MoreObjects;
 import com.google.errorprone.annotations.Var;
 import com.typesafe.config.Config;
-
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import org.checkerframework.checker.nullness.qual.Nullable;
 
-import java.util.HashMap;
-import java.util.Random;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Clock with Adaptive Replacement policy. This algorithm differs from ARC by replacing the LRU
@@ -70,17 +60,11 @@ public final class CarPolicy implements Policy {
   private int sizeB2;
   private int p;
 
-  private final Source source;
-  private final HashMap<Long, Source> itemToSource;
-
   public CarPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     this.policyStats = new PolicyStats(name());
     this.data = new Long2ObjectOpenHashMap<>();
-
-    source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
-    this.itemToSource = new HashMap<>();
 
     this.headT1 = new Node(1);
     this.headT2 = new Node(1);
@@ -91,9 +75,6 @@ public final class CarPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     Node node = data.get(event.key());
-    if (!itemToSource.containsKey(event.key())) {
-      itemToSource.put(event.key(), source);
-    }
 
     if (isHit(node)) {
       policyStats.recordHit();

@@ -23,14 +23,9 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.google.common.primitives.Ints;
 import com.typesafe.config.Config;
 
-import java.util.HashMap;
 import java.util.Set;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
@@ -44,9 +39,6 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Charact
 public final class CaffeinePolicy implements Policy {
   private final Cache<Long, AccessEvent> cache;
   private final PolicyStats policyStats;
-
-  private final Source source;
-  private final HashMap<Long, Source> itemToSource;
 
   public CaffeinePolicy(Config config, Set<Characteristic> characteristics) {
     policyStats = new PolicyStats(name());
@@ -63,30 +55,18 @@ public final class CaffeinePolicy implements Policy {
       builder.initialCapacity(Ints.saturatedCast(settings.maximumSize()));
     }
     cache = builder.build();
-
-    source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
-    itemToSource = new HashMap<>();
   }
 
   @Override
   public void record(AccessEvent event) {
-    if (!itemToSource.containsKey(event.key())) {
-      itemToSource.put(event.key(), source);
-    }
-
     AccessEvent value = cache.getIfPresent(event.key());
     if (value == null) {
       cache.put(event.key(), event);
       policyStats.recordWeightedMiss(event.weight());
-
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(event.retrievalDelay(), event.itemSize(), Consts.BANDWIDTH));
-      policyStats.addDelay(event.retrievalDelay());
     } else {
       policyStats.recordWeightedHit(event.weight());
       if (event.weight() != value.weight()) {
         cache.put(event.key(), event);
-
-        policyStats.addLatency(TimeCalculations.calculateTransmissionTime(event.itemSize(), Consts.BANDWIDTH));
       }
     }
   }

@@ -20,10 +20,6 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -32,7 +28,6 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import java.util.HashMap;
 import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.TreeSet;
@@ -64,9 +59,6 @@ public final class CampPolicy implements Policy {
   private long requestCount;
   private int size;
 
-  private final Source source;
-  private final HashMap<Long, Source> itemToSource;
-
   public CampPolicy(Config config) {
     var settings = new CampSettings(config);
 
@@ -78,9 +70,6 @@ public final class CampPolicy implements Policy {
     this.data = new Long2ObjectOpenHashMap<>();
     this.sentinelMapping = new Int2ObjectOpenHashMap<>();
     this.bitMask = Integer.MAX_VALUE >> (Integer.SIZE - 1 - precision);
-
-    source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
-    itemToSource = new HashMap<>();
   }
 
   @Override
@@ -89,9 +78,6 @@ public final class CampPolicy implements Policy {
     var node = data.get(key);
     requestCount++;
 
-    if (!itemToSource.containsKey(key)) {
-      itemToSource.put(event.key(), source);
-    }
     if (node == null) {
       policyStats.recordWeightedMiss(event.weight());
 
