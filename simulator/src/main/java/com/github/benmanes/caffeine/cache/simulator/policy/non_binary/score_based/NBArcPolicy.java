@@ -16,7 +16,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
-@Policy.PolicySpec(name = "non-binary.Arc")
+@Policy.PolicySpec(name = "non-binary.score-based.Arc")
 public final class NBArcPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;

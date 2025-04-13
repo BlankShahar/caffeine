@@ -17,7 +17,7 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.HillClimberWindowTinyLFU")
+@Policy.PolicySpec(name = "non-binary.white-box.HillClimberWindowTinyLFU")
 public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
@@ -43,7 +43,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
 
     q = 1;
     ratio = 0.5;
-    refinementInterval = 1; // settings.maximumSize();
+    refinementInterval = 1_000;
     stepSize = 0.05;
     previousTotalDelay = 0;
     currentTotalDelay = 0;

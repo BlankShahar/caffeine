@@ -17,7 +17,7 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.ConvexLRFU")
+@Policy.PolicySpec(name = "non-binary.score-based.ConvexLRFU")
 public final class NBConvexLrfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
@@ -44,7 +44,7 @@ public final class NBConvexLrfuPolicy implements Policy {
     alpha = 0.5;
     maxRecency = 0;
     maxFrequency = 0;
-    refinementInterval = 1; // settings.maximumSize();
+    refinementInterval = 1_000;
     stepSize = 0.05;
     q = 1;
     previousTotalDelay = 0;

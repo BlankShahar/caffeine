@@ -13,7 +13,7 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
-@Policy.PolicySpec(name = "non-binary.LRFU")
+@Policy.PolicySpec(name = "non-binary.score-based.LRFU")
 public final class NBLrfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   long currentTime;

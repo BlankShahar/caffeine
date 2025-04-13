@@ -17,7 +17,7 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.Hyperbolic")
+@Policy.PolicySpec(name = "non-binary.score-based.Hyperbolic")
 public final class NBHyperbolicPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
