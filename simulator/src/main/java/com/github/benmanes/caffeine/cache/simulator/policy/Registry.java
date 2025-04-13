@@ -26,7 +26,10 @@ import com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual.GDWheelPo
 import com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual.GdsfPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.irr.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.*;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.*;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.black_box.BBNBLfuPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.black_box.BBNBLruPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.score_based.*;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.white_box.NBHillClimberWindowTinyLfuPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.UnboundedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.*;

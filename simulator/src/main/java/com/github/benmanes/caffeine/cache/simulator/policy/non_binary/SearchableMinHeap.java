@@ -27,7 +27,7 @@ public class SearchableMinHeap<K, V> {
   protected K[] heap;
   protected Map<K, V> valuesMap;
   protected Map<K, Integer> idxMap;
-  protected int size;
+  public int size;
   protected int maxSize;
   protected Comparator<? super K> c;
 

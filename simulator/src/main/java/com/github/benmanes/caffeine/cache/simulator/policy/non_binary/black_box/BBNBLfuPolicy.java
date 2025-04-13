@@ -1,9 +1,12 @@
-package com.github.benmanes.caffeine.cache.simulator.policy.non_binary;
+package com.github.benmanes.caffeine.cache.simulator.policy.non_binary.black_box;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.SearchableMinHeap;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
@@ -14,8 +17,8 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.LFU")
-public final class NBLfuPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.black-box.LFU")
+public final class BBNBLfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   final long maximumCacheSize; // in chunks
@@ -24,7 +27,7 @@ public final class NBLfuPolicy implements Policy {
   final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
 
-  public NBLfuPolicy(Config config) {
+  public BBNBLfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -33,6 +36,7 @@ public final class NBLfuPolicy implements Policy {
 
     this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
+
 
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
@@ -100,10 +104,7 @@ public final class NBLfuPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.lfuScoreAfterInsertion();
-      double sMinus = victim.lfuScoreAfterEviction();
-
-      if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
+      if (prefix.isFull() || victim.itemKey == prefix.itemKey) {
         break;
       }
 
@@ -193,6 +194,7 @@ public final class NBLfuPolicy implements Policy {
     final Source source;
     long chunksAmount;
     long requestsCountInPeriod;
+    long firstCacheChunksAmount, secondCacheChunksAmount;
 
     public Prefix(long itemKey, long fullItemChunksAmount, Source source) {
       this.itemKey = itemKey;
@@ -200,36 +202,14 @@ public final class NBLfuPolicy implements Policy {
       this.source = source;
       this.requestsCountInPeriod = 0;
       this.chunksAmount = 0;
+      this.firstCacheChunksAmount = 0;
+      this.secondCacheChunksAmount = 0;
     }
 
     public double lfuScore() {
       // Idea - frequency times the probability of not experiencing delay
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB(),
-        Consts.BANDWIDTH
-      );
-      return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double lfuScoreAfterInsertion() {
-      if (isFull()) {
-        return 0; // 1-CDF value is 0
-      }
-
-      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        sizeInMB() + Consts.CHUNK_SIZE,
-        Consts.BANDWIDTH
-      );
-      return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double lfuScoreAfterEviction() {
-      if (isEmpty()) {
-        return frequency(); // 1-CDF value is 1
-      }
-
-      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        sizeInMB() - Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
       return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
@@ -267,9 +247,9 @@ public final class NBLfuPolicy implements Policy {
       return chunksAmount == 0;
     }
 
+
     public int lfuCompareTo(Prefix other) {
       return Double.compare(this.lfuScore(), other.lfuScore());
     }
   }
-
 }

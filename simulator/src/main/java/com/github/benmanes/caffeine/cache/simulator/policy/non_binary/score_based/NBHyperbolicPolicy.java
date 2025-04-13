@@ -1,9 +1,12 @@
-package com.github.benmanes.caffeine.cache.simulator.policy.non_binary;
+package com.github.benmanes.caffeine.cache.simulator.policy.non_binary.score_based;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.SearchableMinHeap;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
@@ -14,18 +17,18 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.LRU")
-public final class NBLruPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.Hyperbolic")
+public final class NBHyperbolicPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
   final PolicyStats policyStats;
+  final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
-  Source source;
 
-  public NBLruPolicy(Config config) {
+  public NBHyperbolicPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -94,7 +97,7 @@ public final class NBLruPolicy implements Policy {
     policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
 
     // Total delay
-    double underflowDelay = calculateUnderflowDelay(sourceDelay, old);
+    double underflowDelay = calculateDelay(sourceDelay, old);
     policyStats.addDelay(underflowDelay);
   }
 
@@ -105,8 +108,8 @@ public final class NBLruPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.lruScoreAfterInsertion();
-      double sMinus = victim.lruScoreAfterEviction();
+      double sPlus = prefix.hyperbolicScoreAfterInsertion();
+      double sMinus = victim.hyperbolicScoreAfterEviction();
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;
@@ -163,7 +166,7 @@ public final class NBLruPolicy implements Policy {
    * @param prefix      the prefix of the item
    * @return the delay in seconds
    */
-  private static double calculateUnderflowDelay(double sourceDelay, Prefix prefix) {
+  private static double calculateDelay(double sourceDelay, Prefix prefix) {
     return TimeCalculations.calculateUnderflowDelay(
       sourceDelay,
       prefix.fullItemSizeInMB(),
@@ -175,7 +178,7 @@ public final class NBLruPolicy implements Policy {
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
     Prefix p1 = data.get(prefixKey1);
     Prefix p2 = data.get(prefixKey2);
-    return p1.lruCompareTo(p2);
+    return p1.hyperbolicCompareTo(p2);
   }
 
   @Override
@@ -209,16 +212,16 @@ public final class NBLruPolicy implements Policy {
       this.chunksAmount = 0;
     }
 
-    public double lruScore() {
-      // Idea - recency times the probability of not experiencing delay
+    public double hyperbolicScore() {
+      // Idea - frequency times recency times the probability of not experiencing delay
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB(),
         Consts.BANDWIDTH
       );
-      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
+      return frequency() * recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
-    public double lruScoreAfterInsertion() {
+    public double hyperbolicScoreAfterInsertion() {
       if (isFull()) {
         return 0; // 1-CDF value is 0
       }
@@ -227,19 +230,23 @@ public final class NBLruPolicy implements Policy {
         sizeInMB() + Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
+      return frequency() * recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
-    public double lruScoreAfterEviction() {
+    public double hyperbolicScoreAfterEviction() {
       if (isEmpty()) {
-        return recency(); // 1-CDF is 1
+        return frequency() * recency(); // 1-CDF value is 1
       }
 
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB() - Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
+      return frequency() * recency() * (1 - source.calculateCDF(prefixTransmissionTime));
+    }
+
+    public double frequency() {
+      return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
     }
 
     public double recency() {
@@ -274,9 +281,8 @@ public final class NBLruPolicy implements Policy {
       return chunksAmount == 0;
     }
 
-    public int lruCompareTo(Prefix other) {
-      return Double.compare(this.lruScore(), other.lruScore());
+    public int hyperbolicCompareTo(Prefix other) {
+      return Double.compare(this.hyperbolicScore(), other.hyperbolicScore());
     }
   }
-
 }
