@@ -96,7 +96,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   public String getPolicyName() {
-    return String.format("sketch.sized.HillClimberWindowTinyLfu (%s %.0f%%%% -> %.0f%%%%)",
+    return String.format("size-aware.HillClimberWindowTinyLfu (%s %.0f%%%% -> %.0f%%%%)",
       strategy.name().toLowerCase(US),
       100 * (1.0 - initialPercentMain),
       (100.0 * maxWindow) / maximumSize);
@@ -352,7 +352,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     checkState(windowSize <= maxWindow);
 
     if (trace) {
-      System.out.printf("+%,d (%,d -> %,d)%n",  quota, maxWindow -  quota, maxWindow);
+      System.out.printf("+%,d (%,d -> %,d)%n", quota, maxWindow - quota, maxWindow);
     }
   }
 
@@ -384,7 +384,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     checkState(windowSize <= maxWindow);
 
     if (trace) {
-      System.out.printf("-%,d (%,d -> %,d)%n",  quota, maxWindow +  quota, maxWindow);
+      System.out.printf("-%,d (%,d -> %,d)%n", quota, maxWindow + quota, maxWindow);
     }
   }
 
@@ -405,10 +405,10 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     long actualProtectedSize = data.values().stream().filter(n -> n.queue == PROTECTED).mapToLong(node -> node.weight).sum();
     long calculatedProbationSize = sizeData - actualWindowSize - actualProtectedSize;
 
-    checkState( windowSize == actualWindowSize,
-      "Window: %s != %s",  windowSize, actualWindowSize);
-    checkState( protectedSize == actualProtectedSize,
-      "Protected: %s != %s",  protectedSize, actualProtectedSize);
+    checkState(windowSize == actualWindowSize,
+      "Window: %s != %s", windowSize, actualWindowSize);
+    checkState(protectedSize == actualProtectedSize,
+      "Protected: %s != %s", protectedSize, actualProtectedSize);
     checkState(actualProbationSize == calculatedProbationSize,
       "Probation: %s != %s", actualProbationSize, calculatedProbationSize);
     checkState(sizeData <= maximumSize, "Maximum: %s > %s", sizeData, maximumSize);
