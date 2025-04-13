@@ -239,6 +239,7 @@ public final class Registry {
     register(NBSegmentedLruPolicy.class, NBSegmentedLruPolicy::new);
     register(NBArcPolicy.class, NBArcPolicy::new);
     register(NBConvexLrfuPolicy.class, NBConvexLrfuPolicy::new);
+    register(NBLrfuPolicy.class, NBLrfuPolicy::new);
 
     register(BBNBLruPolicy.class, BBNBLruPolicy::new);
     register(BBNBLfuPolicy.class, BBNBLfuPolicy::new);
@@ -251,6 +252,7 @@ public final class Registry {
     registerMany(SAHillClimberWindowTinyLfuPolicy.class, SAHillClimberWindowTinyLfuPolicy::policies);
     register(SASegmentedLruPolicy.class, SASegmentedLruPolicy::new);
     register(SAArcPolicy.class, SAArcPolicy::new);
+    register(SALrfuPolicy.class, SALrfuPolicy::new);
   }
 
   @AutoValue
