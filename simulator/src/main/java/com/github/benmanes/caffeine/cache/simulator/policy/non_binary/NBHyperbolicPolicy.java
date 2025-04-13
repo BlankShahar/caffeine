@@ -93,11 +93,9 @@ public final class NBHyperbolicPolicy implements Policy {
     policyStats.addHits(old.chunksAmount);
     policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
 
-    // Total delay and latency
+    // Total delay
     double underflowDelay = calculateDelay(sourceDelay, old);
     policyStats.addDelay(underflowDelay);
-    double latency = calculateLatency(sourceDelay, old);
-    policyStats.addLatency(latency);
   }
 
   private void waterFill(Prefix prefix) {
@@ -159,7 +157,7 @@ public final class NBHyperbolicPolicy implements Policy {
   }
 
   /**
-   * Calculate the full latency of fetching a partial cached object
+   * Calculate the delay of fetching a partial cached object
    *
    * @param sourceDelay in seconds
    * @param prefix      the prefix of the item
@@ -167,22 +165,6 @@ public final class NBHyperbolicPolicy implements Policy {
    */
   private static double calculateDelay(double sourceDelay, Prefix prefix) {
     return TimeCalculations.calculateUnderflowDelay(
-      sourceDelay,
-      prefix.fullItemSizeInMB(),
-      prefix.sizeInMB(),
-      Consts.BANDWIDTH
-    );
-  }
-
-  /**
-   * Calculate the full latency of fetching a partial cached object
-   *
-   * @param sourceDelay in s
-   * @param prefix      the prefix of the item
-   * @return the latency in seconds
-   */
-  private static double calculateLatency(double sourceDelay, Prefix prefix) {
-    return TimeCalculations.calculateNonBinaryLatency(
       sourceDelay,
       prefix.fullItemSizeInMB(),
       prefix.sizeInMB(),

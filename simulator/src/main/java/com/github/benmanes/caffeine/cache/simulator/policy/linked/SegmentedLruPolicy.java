@@ -119,15 +119,12 @@ public final class SegmentedLruPolicy implements Policy {
       node.appendToTail(headProtected);
     }
     policyStats.recordHit();
-    policyStats.addLatency(TimeCalculations.calculateTransmissionTime(node.size, Consts.BANDWIDTH));
   }
 
   private void onMiss(long key, double retrievalDelay, long itemSize) {
     var node = new Node(key, itemSize);
     data.put(key, node);
     policyStats.recordMiss();
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(retrievalDelay, node.size, Consts.BANDWIDTH));
-    policyStats.addDelay(retrievalDelay);
 
     node.appendToTail(headProbation);
     node.type = QueueType.PROBATION;

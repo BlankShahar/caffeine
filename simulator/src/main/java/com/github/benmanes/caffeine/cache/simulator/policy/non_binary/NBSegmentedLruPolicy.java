@@ -143,14 +143,7 @@ public final class NBSegmentedLruPolicy implements Policy {
       prefix.sizeInMB(),
       Consts.BANDWIDTH
     );
-    double latency = TimeCalculations.calculateNonBinaryLatency(
-      sourceDelay,
-      prefix.fullItemSizeInMB(),
-      prefix.sizeInMB(),
-      Consts.BANDWIDTH
-    );
     policyStats.addDelay(underflowDelay);
-    policyStats.addLatency(latency);
   }
 
   /**

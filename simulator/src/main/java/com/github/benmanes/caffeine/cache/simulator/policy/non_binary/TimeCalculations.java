@@ -2,18 +2,6 @@ package com.github.benmanes.caffeine.cache.simulator.policy.non_binary;
 
 
 public final class TimeCalculations {
-  public static double calculateSourceLatency(double sourceDelay, double itemSize, long bandwidth) {
-    double transmissionTime = 2 * calculateTransmissionTime(itemSize, bandwidth);
-    return sourceDelay + transmissionTime;
-  }
-
-  public static double calculateNonBinaryLatency(double sourceDelay, double itemSize, double prefixSize, long bandwidth) {
-    double prefixTransmissionTime = calculateTransmissionTime(prefixSize, bandwidth);
-    double restTransmissionTime = 2 * calculateTransmissionTime(itemSize - prefixSize, bandwidth);
-    double delay = calculateUnderflowDelay(sourceDelay, itemSize, prefixSize, bandwidth);
-    return prefixTransmissionTime + Math.max(0, delay) + restTransmissionTime;
-  }
-
   /**
    * Calculate the delay of fetching a partial cached object.
    * If the whole object is cached - the delay is 0 (due to not requesting the source).

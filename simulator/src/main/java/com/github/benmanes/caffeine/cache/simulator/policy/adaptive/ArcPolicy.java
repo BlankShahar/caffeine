@@ -127,7 +127,6 @@ public final class ArcPolicy implements Policy {
     node.appendToTail(headT2);
 
     policyStats.recordHit();
-    policyStats.addLatency(TimeCalculations.calculateTransmissionTime(node.size, Consts.BANDWIDTH));
   }
 
   private void onHitB1(Node node, double retrievalDelay) {
@@ -145,8 +144,6 @@ public final class ArcPolicy implements Policy {
     node.appendToTail(headT2);
 
     policyStats.recordMiss();
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(retrievalDelay, node.size, Consts.BANDWIDTH));
-    policyStats.addDelay(retrievalDelay);
   }
 
   private void onHitB2(Node node, double retrievalDelay) {
@@ -164,8 +161,6 @@ public final class ArcPolicy implements Policy {
     node.appendToTail(headT2);
 
     policyStats.recordMiss();
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(retrievalDelay, node.size, Consts.BANDWIDTH));
-    policyStats.addDelay(retrievalDelay);
   }
 
   private void onMiss(long key, double retrievalDelay, long itemSize) {
@@ -212,8 +207,6 @@ public final class ArcPolicy implements Policy {
     node.appendToTail(headT1);
 
     policyStats.recordMiss();
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(retrievalDelay, node.size, Consts.BANDWIDTH));
-    policyStats.addDelay(retrievalDelay);
   }
 
   /**

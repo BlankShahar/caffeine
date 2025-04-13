@@ -91,15 +91,12 @@ public final class SASegmentedLruPolicy implements Policy {
       }
     }
     policyStats.recordHit();
-    policyStats.addLatency(TimeCalculations.calculateTransmissionTime(node.size, Consts.BANDWIDTH));
   }
 
   /**
    * Handle a cache miss by inserting a new node in probation (if it fits).
    */
   private void onMiss(long key, double retrievalDelay, long itemSize) {
-    // Latency cost from the source
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(retrievalDelay, itemSize, Consts.BANDWIDTH));
     policyStats.addDelay(retrievalDelay);
 
     // If item is bigger than the entire probation region, skip

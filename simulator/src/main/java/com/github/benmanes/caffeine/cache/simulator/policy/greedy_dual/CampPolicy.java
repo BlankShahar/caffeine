@@ -95,13 +95,9 @@ public final class CampPolicy implements Policy {
     if (node == null) {
       policyStats.recordWeightedMiss(event.weight());
 
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(event.retrievalDelay(), event.itemSize(), Consts.BANDWIDTH));
-      policyStats.addDelay(event.retrievalDelay());
-
       onMiss(event);
     } else {
       policyStats.recordWeightedHit(event.weight());
-      policyStats.addLatency(TimeCalculations.calculateTransmissionTime(event.itemSize(), Consts.BANDWIDTH));
 
       onHit(node);
       size += (event.weight() - node.weight);

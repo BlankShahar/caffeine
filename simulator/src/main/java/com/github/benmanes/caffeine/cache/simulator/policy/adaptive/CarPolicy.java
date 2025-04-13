@@ -97,13 +97,10 @@ public final class CarPolicy implements Policy {
 
     if (isHit(node)) {
       policyStats.recordHit();
-      policyStats.addLatency(TimeCalculations.calculateTransmissionTime(node.size, Consts.BANDWIDTH));
 
       onHit(node);
     } else {
       policyStats.recordMiss();
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(event.retrievalDelay(), event.itemSize(), Consts.BANDWIDTH));
-      policyStats.addDelay(event.retrievalDelay());
 
       onMiss(event.key(), node);
     }

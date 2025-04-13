@@ -297,9 +297,7 @@ public final class NBArcPolicy implements Policy {
     policyStats.addMisses(Math.max(0, idealChunks - prefix.chunksAmount));
 
     double underflow = TimeCalculations.calculateUnderflowDelay(delay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
-    double latency = TimeCalculations.calculateNonBinaryLatency(delay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
     policyStats.addDelay(underflow);
-    policyStats.addLatency(latency);
   }
 
   public int comparePrefixes(long k1, long k2) {

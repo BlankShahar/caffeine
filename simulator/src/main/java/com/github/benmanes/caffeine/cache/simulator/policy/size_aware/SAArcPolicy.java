@@ -66,12 +66,10 @@ public final class SAArcPolicy implements Policy {
     n.appendToTail(headT2);
 
     stats.recordHit();
-    stats.addLatency(TimeCalculations.calculateTransmissionTime(n.size, Consts.BANDWIDTH));
   }
 
   private void onHitB1(Node n, AccessEvent e) {
     stats.recordMiss();
-    stats.addLatency(TimeCalculations.calculateSourceLatency(e.retrievalDelay(), n.size, Consts.BANDWIDTH));
     stats.addDelay(e.retrievalDelay());
 
     p = Math.min(maximumCacheSize, p + n.size);
@@ -85,7 +83,6 @@ public final class SAArcPolicy implements Policy {
 
   private void onHitB2(Node n, AccessEvent e) {
     stats.recordMiss();
-    stats.addLatency(TimeCalculations.calculateSourceLatency(e.retrievalDelay(), n.size, Consts.BANDWIDTH));
     stats.addDelay(e.retrievalDelay());
 
     p = Math.max(0, p - n.size);
@@ -109,7 +106,6 @@ public final class SAArcPolicy implements Policy {
   private void onMiss(AccessEvent e) {
     long size = e.itemSize();
     stats.recordMiss();
-    stats.addLatency(TimeCalculations.calculateSourceLatency(e.retrievalDelay(), size, Consts.BANDWIDTH));
     stats.addDelay(e.retrievalDelay());
 
     if (size > maximumCacheSize) {

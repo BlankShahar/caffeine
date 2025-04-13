@@ -122,12 +122,10 @@ public final class ClairvoyantPolicy implements Policy {
       policyStats.recordHit();
       policyStats.recordHitPenalty(hitPenalty);
 
-      policyStats.addLatency(TimeCalculations.calculateTransmissionTime(itemSize, Consts.BANDWIDTH));
     } else {
       policyStats.recordMiss();
       policyStats.recordMissPenalty(missPenalty);
 
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(retrievalDelay, itemSize, Consts.BANDWIDTH));
       policyStats.addDelay(retrievalDelay);
 
       if (data.size() > maximumSize) {

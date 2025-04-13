@@ -74,12 +74,9 @@ public final class GuavaPolicy implements Policy {
     if (value == null) {
       cache.put(event.key(), event);
       policyStats.recordWeightedMiss(event.weight());
-
-      policyStats.addLatency(TimeCalculations.calculateSourceLatency(event.retrievalDelay(), event.itemSize(), Consts.BANDWIDTH));
       policyStats.addDelay(event.retrievalDelay());
     } else {
       policyStats.recordWeightedHit(event.weight());
-      policyStats.addLatency(TimeCalculations.calculateTransmissionTime(event.itemSize(), Consts.BANDWIDTH));
 
       if (event.weight() != value.weight()) {
         cache.put(event.key(), event);

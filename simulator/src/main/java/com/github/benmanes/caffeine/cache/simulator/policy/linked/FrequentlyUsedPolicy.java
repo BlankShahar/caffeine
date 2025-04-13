@@ -119,8 +119,6 @@ public final class FrequentlyUsedPolicy implements Policy {
       : new FrequencyNode(1, freq0);
     var node = new Node(freq1, key);
     policyStats.recordMiss();
-    policyStats.addLatency(TimeCalculations.calculateSourceLatency(event.retrievalDelay(), event.itemSize(), Consts.BANDWIDTH));
-    policyStats.addDelay(event.retrievalDelay());
     data.put(key, node);
     node.append();
     evict(node);
