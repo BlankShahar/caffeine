@@ -18,7 +18,7 @@ import java.util.Queue;
 
 
 @Policy.PolicySpec(name = "non-binary.white-box.HillClimberWindowTinyLFU")
-public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
+public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
@@ -33,7 +33,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   final Source source;
   final SearchableMinHeap<Long, Prefix> firstCacheScoreMinHeap, secondCacheScoreMinHeap;
 
-  public NBHillClimberWindowTinyLfuPolicy(Config config) {
+  public WBNBHillClimberWindowTinyLfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 

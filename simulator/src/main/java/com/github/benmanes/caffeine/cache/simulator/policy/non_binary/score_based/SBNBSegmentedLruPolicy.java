@@ -17,7 +17,7 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 @Policy.PolicySpec(name = "non-binary.score-based.SegmentedLRU")
-public final class NBSegmentedLruPolicy implements Policy {
+public final class SBNBSegmentedLruPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
@@ -34,7 +34,7 @@ public final class NBSegmentedLruPolicy implements Policy {
   final SearchableMinHeap<Long, Prefix> protectedHeap;
   final Source source;
 
-  public NBSegmentedLruPolicy(Config config) {
+  public SBNBSegmentedLruPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -333,7 +333,7 @@ public final class NBSegmentedLruPolicy implements Policy {
      * 1 / (now - lastRequestTime + 1)
      */
     double recency() {
-      return 1.0 / (NBSegmentedLruPolicy.currentTime - lastRequestTime + 1);
+      return 1.0 / (SBNBSegmentedLruPolicy.currentTime - lastRequestTime + 1);
     }
 
     double sizeInMB() {

@@ -13,32 +13,25 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
-import java.util.ArrayDeque;
-import java.util.Queue;
-
-
-@Policy.PolicySpec(name = "non-binary.score-based.LRU")
-public final class NBLruPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.score-based.LRFU")
+public final class SBNBLrfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
-  final Queue<Long> requests;
-  static long currentTime;
+  long currentTime;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
   final PolicyStats policyStats;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
   Source source;
 
-  public NBLruPolicy(Config config) {
+  public SBNBLrfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
     this.data = new Long2ObjectOpenHashMap<>();
-    this.requests = new ArrayDeque<>();
     currentTime = 0;
 
     this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
-
 
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
@@ -52,11 +45,9 @@ public final class NBLruPolicy implements Policy {
     currentTime++;
 
     if (existingPrefix != null) {
-      // prefix exist (partial hit)
       existingPrefix.lastRequestTime = currentTime;
       onRequest(existingPrefix, event.retrievalDelay());
     } else {
-      // prefix missing (full miss)
       var newPrefix = new Prefix(itemKey, event.itemSize(), source, currentTime);
       onRequest(newPrefix, event.retrievalDelay());
     }
@@ -64,7 +55,7 @@ public final class NBLruPolicy implements Policy {
 
   private void onRequest(Prefix prefix, double sourceDelay) {
     recordRequestStatistics(prefix, sourceDelay);
-    handleRequestsFrequency(prefix);
+    prefix.updateScore(currentTime);
 
     if (!data.containsKey(prefix.itemKey)) {
       data.put(prefix.itemKey, prefix);
@@ -72,31 +63,13 @@ public final class NBLruPolicy implements Policy {
     waterFill(prefix);
   }
 
-  private void handleRequestsFrequency(Prefix prefix) {
-    prefix.requestsCountInPeriod++;
-
-    requests.add(prefix.itemKey);
-    if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
-      long lastRequestItemKey = requests.remove();
-      var lastRequestedPrefix = data.getOrDefault(lastRequestItemKey, null);
-      policyStats.recordOperation();
-
-      if (lastRequestedPrefix != null) {
-        lastRequestedPrefix.requestsCountInPeriod--;
-      }
-    }
-  }
-
   private void recordRequestStatistics(Prefix old, double sourceDelay) {
-    // The ideal prefix size - the size that gives "no delay"/"all the item is cached" illusion
     double idealSize = Math.min(old.fullItemSizeInMB(), sourceDelay * Consts.BANDWIDTH);
     long idealChunksAmount = (long) Math.ceil(idealSize / Consts.CHUNK_SIZE);
 
-    // Chunk Hit Rate
     policyStats.addHits(old.chunksAmount);
     policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
 
-    // Total delay
     double underflowDelay = calculateUnderflowDelay(sourceDelay, old);
     policyStats.addDelay(underflowDelay);
   }
@@ -108,8 +81,8 @@ public final class NBLruPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.lruScoreAfterInsertion();
-      double sMinus = victim.lruScoreAfterEviction();
+      double sPlus = prefix.lrfuScoreAfterInsertion();
+      double sMinus = victim.lrfuScoreAfterEviction();
 
       if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
         break;
@@ -152,20 +125,10 @@ public final class NBLruPolicy implements Policy {
     policyStats.recordAdmission();
   }
 
-  /**
-   * @return the victim chunk to be evicted, or null if no suitable one is found
-   */
   private Prefix findVictim() {
     return scoreMinHeap.min().value();
   }
 
-  /**
-   * Calculate the delay of fetching a partial cached object
-   *
-   * @param sourceDelay in seconds
-   * @param prefix      the prefix of the item
-   * @return the delay in seconds
-   */
   private static double calculateUnderflowDelay(double sourceDelay, Prefix prefix) {
     return TimeCalculations.calculateUnderflowDelay(
       sourceDelay,
@@ -178,7 +141,7 @@ public final class NBLruPolicy implements Policy {
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
     Prefix p1 = data.get(prefixKey1);
     Prefix p2 = data.get(prefixKey2);
-    return p1.lruCompareTo(p2);
+    return p1.lrfuCompareTo(p2);
   }
 
   @Override
@@ -200,53 +163,49 @@ public final class NBLruPolicy implements Policy {
     final long itemKey, fullItemChunksAmount;
     final Source source;
     long chunksAmount;
-    long requestsCountInPeriod;
     long lastRequestTime;
+
+    double score;
+    static final double LAMBDA = 2.0;
 
     public Prefix(long itemKey, long fullItemChunksAmount, Source source, long currentTime) {
       this.itemKey = itemKey;
       this.fullItemChunksAmount = fullItemChunksAmount;
       this.source = source;
-      this.requestsCountInPeriod = 0;
       this.lastRequestTime = currentTime;
       this.chunksAmount = 0;
+      this.score = 0;
     }
 
-    public double lruScore() {
-      // Idea - recency times the probability of not experiencing delay
+    public void updateScore(long currentTime) {
+      double decay = Math.pow(0.5, (currentTime - lastRequestTime) / LAMBDA);
+      score = score * decay + 1;
+    }
+
+    public double lrfuScore() {
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB(),
         Consts.BANDWIDTH
       );
-      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
+      return score * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
-    public double lruScoreAfterInsertion() {
-      if (isFull()) {
-        return 0; // 1-CDF value is 0
-      }
-
+    public double lrfuScoreAfterInsertion() {
+      if (isFull()) return 0;
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB() + Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
+      return score * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
-    public double lruScoreAfterEviction() {
-      if (isEmpty()) {
-        return recency(); // 1-CDF is 1
-      }
-
+    public double lrfuScoreAfterEviction() {
+      if (isEmpty()) return score;
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB() - Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
-      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double recency() {
-      return (double) 1 / (currentTime - lastRequestTime + 1);
+      return score * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public void insertChunk() {
@@ -277,9 +236,8 @@ public final class NBLruPolicy implements Policy {
       return chunksAmount == 0;
     }
 
-    public int lruCompareTo(Prefix other) {
-      return Double.compare(this.lruScore(), other.lruScore());
+    public int lrfuCompareTo(Prefix other) {
+      return Double.compare(this.lrfuScore(), other.lrfuScore());
     }
   }
-
 }

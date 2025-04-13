@@ -18,7 +18,7 @@ import java.util.Queue;
 
 
 @Policy.PolicySpec(name = "non-binary.score-based.LFU")
-public final class NBLfuPolicy implements Policy {
+public final class SBNBLfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   final long maximumCacheSize; // in chunks
@@ -27,7 +27,7 @@ public final class NBLfuPolicy implements Policy {
   final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
 
-  public NBLfuPolicy(Config config) {
+  public SBNBLfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 

@@ -1,4 +1,4 @@
-package com.github.benmanes.caffeine.cache.simulator.policy.non_binary.score_based;
+package com.github.benmanes.caffeine.cache.simulator.policy.non_binary.black_box;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
@@ -16,8 +16,8 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
-@Policy.PolicySpec(name = "non-binary.score-based.Arc")
-public final class NBArcPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.black-box.Arc")
+public final class BBNBArcPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
@@ -30,7 +30,7 @@ public final class NBArcPolicy implements Policy {
 
   enum Q {T1, T2, B1, B2, NONE}
 
-  public NBArcPolicy(Config config) {
+  public BBNBArcPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -197,9 +197,7 @@ public final class NBArcPolicy implements Policy {
     while (true) {
       Prefix victim = findVictim(prefix.queue);
       if (victim == null) break;
-      double sPlus = prefix.lruScoreAfterInsertion();
-      double sMinus = victim.lruScoreAfterEviction();
-      if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) break;
+      if (prefix.isFull() || victim.itemKey == prefix.itemKey) break;
       shrinkPrefix(victim);
       extendPrefix(prefix);
     }
@@ -363,18 +361,6 @@ public final class NBArcPolicy implements Policy {
 
     public double lruScore() {
       double t = TimeCalculations.calculateTransmissionTime(sizeInMB(), Consts.BANDWIDTH);
-      return recency() * (1 - source.calculateCDF(t));
-    }
-
-    public double lruScoreAfterInsertion() {
-      if (isFull()) return 0;
-      double t = TimeCalculations.calculateTransmissionTime(sizeInMB() + Consts.CHUNK_SIZE, Consts.BANDWIDTH);
-      return recency() * (1 - source.calculateCDF(t));
-    }
-
-    public double lruScoreAfterEviction() {
-      if (isEmpty()) return recency();
-      double t = TimeCalculations.calculateTransmissionTime(sizeInMB() - Consts.CHUNK_SIZE, Consts.BANDWIDTH);
       return recency() * (1 - source.calculateCDF(t));
     }
 

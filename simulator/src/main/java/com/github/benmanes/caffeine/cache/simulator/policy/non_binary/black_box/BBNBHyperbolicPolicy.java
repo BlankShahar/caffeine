@@ -1,4 +1,4 @@
-package com.github.benmanes.caffeine.cache.simulator.policy.non_binary.score_based;
+package com.github.benmanes.caffeine.cache.simulator.policy.non_binary.black_box;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
@@ -17,8 +17,8 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.score-based.Hyperbolic")
-public final class NBHyperbolicPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.black-box.Hyperbolic")
+public final class BBNBHyperbolicPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
@@ -28,7 +28,7 @@ public final class NBHyperbolicPolicy implements Policy {
   final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
 
-  public NBHyperbolicPolicy(Config config) {
+  public BBNBHyperbolicPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -108,13 +108,9 @@ public final class NBHyperbolicPolicy implements Policy {
 
     while (true) {
       Prefix victim = findVictim();
-      double sPlus = prefix.hyperbolicScoreAfterInsertion();
-      double sMinus = victim.hyperbolicScoreAfterEviction();
-
-      if (prefix.isFull() || victim.itemKey == prefix.itemKey || sPlus < sMinus) {
+      if (prefix.isFull() || victim.itemKey == prefix.itemKey) {
         break;
       }
-
       shrinkPrefix(victim);
       extendPrefix(prefix);
     }
@@ -216,30 +212,6 @@ public final class NBHyperbolicPolicy implements Policy {
       // Idea - frequency times recency times the probability of not experiencing delay
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB(),
-        Consts.BANDWIDTH
-      );
-      return frequency() * recency() * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double hyperbolicScoreAfterInsertion() {
-      if (isFull()) {
-        return 0; // 1-CDF value is 0
-      }
-
-      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        sizeInMB() + Consts.CHUNK_SIZE,
-        Consts.BANDWIDTH
-      );
-      return frequency() * recency() * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double hyperbolicScoreAfterEviction() {
-      if (isEmpty()) {
-        return frequency() * recency(); // 1-CDF value is 1
-      }
-
-      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        sizeInMB() - Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
       return frequency() * recency() * (1 - source.calculateCDF(prefixTransmissionTime));

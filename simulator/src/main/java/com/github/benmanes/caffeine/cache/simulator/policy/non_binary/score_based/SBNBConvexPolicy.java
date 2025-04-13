@@ -17,8 +17,8 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.score-based.ConvexLRFU")
-public final class NBConvexLrfuPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.score-based.Convex")
+public final class SBNBConvexPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
@@ -33,7 +33,7 @@ public final class NBConvexLrfuPolicy implements Policy {
   final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
 
-  public NBConvexLrfuPolicy(Config config) {
+  public SBNBConvexPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 

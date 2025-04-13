@@ -26,10 +26,9 @@ import com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual.GDWheelPo
 import com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual.GdsfPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.irr.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.*;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.black_box.BBNBLfuPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.black_box.BBNBLruPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.black_box.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.score_based.*;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.white_box.NBHillClimberWindowTinyLfuPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.white_box.WBNBHillClimberWindowTinyLfuPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.UnboundedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.*;
@@ -232,27 +231,43 @@ public final class Registry {
   }
 
   private void registerNonBinary() {
-    register(NBLruPolicy.class, NBLruPolicy::new);
-    register(NBLfuPolicy.class, NBLfuPolicy::new);
-    register(NBHyperbolicPolicy.class, NBHyperbolicPolicy::new);
-    register(NBHillClimberWindowTinyLfuPolicy.class, NBHillClimberWindowTinyLfuPolicy::new);
-    register(NBSegmentedLruPolicy.class, NBSegmentedLruPolicy::new);
-    register(NBArcPolicy.class, NBArcPolicy::new);
-    register(NBConvexLrfuPolicy.class, NBConvexLrfuPolicy::new);
-    register(NBLrfuPolicy.class, NBLrfuPolicy::new);
+    registerNonBinaryBlackBox();
+    registerNonBinaryScoreBased();
+    registerNonBinaryWhiteBox();
+  }
 
-    register(BBNBLruPolicy.class, BBNBLruPolicy::new);
+  private void registerNonBinaryBlackBox() {
     register(BBNBLfuPolicy.class, BBNBLfuPolicy::new);
+    register(BBNBLruPolicy.class, BBNBLruPolicy::new);
+    register(BBNBHyperbolicPolicy.class, BBNBHyperbolicPolicy::new);
+    register(BBNBLrfuPolicy.class, BBNBLrfuPolicy::new);
+    register(BBNBConvexPolicy.class, BBNBConvexPolicy::new);
+    register(BBNBSegmentedLruPolicy.class, BBNBSegmentedLruPolicy::new);
+    register(BBNBArcPolicy.class, BBNBArcPolicy::new);
+  }
+
+  private void registerNonBinaryScoreBased() {
+    register(SBNBLfuPolicy.class, SBNBLfuPolicy::new);
+    register(SBNBLruPolicy.class, SBNBLruPolicy::new);
+    register(SBNBHyperbolicPolicy.class, SBNBHyperbolicPolicy::new);
+    register(SBNBLrfuPolicy.class, SBNBLrfuPolicy::new);
+    register(SBNBConvexPolicy.class, SBNBConvexPolicy::new);
+    register(SBNBSegmentedLruPolicy.class, SBNBSegmentedLruPolicy::new);
+    register(SBNBArcPolicy.class, SBNBArcPolicy::new);
+  }
+
+  private void registerNonBinaryWhiteBox() {
+    register(WBNBHillClimberWindowTinyLfuPolicy.class, WBNBHillClimberWindowTinyLfuPolicy::new);
   }
 
   private void registerSizeAware() {
     register(SALfuPolicy.class, SALfuPolicy::new);
     register(SALruPolicy.class, SALruPolicy::new);
     register(SAHyperbolicPolicy.class, SAHyperbolicPolicy::new);
-    registerMany(SAHillClimberWindowTinyLfuPolicy.class, SAHillClimberWindowTinyLfuPolicy::policies);
+    register(SALrfuPolicy.class, SALrfuPolicy::new);
     register(SASegmentedLruPolicy.class, SASegmentedLruPolicy::new);
     register(SAArcPolicy.class, SAArcPolicy::new);
-    register(SALrfuPolicy.class, SALrfuPolicy::new);
+    registerMany(SAHillClimberWindowTinyLfuPolicy.class, SAHillClimberWindowTinyLfuPolicy::policies);
   }
 
   @AutoValue
