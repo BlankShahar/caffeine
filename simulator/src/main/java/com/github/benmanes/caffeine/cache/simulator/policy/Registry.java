@@ -269,7 +269,7 @@ public final class Registry {
     register(SALrfuPolicy.class, SALrfuPolicy::new);
     register(SASegmentedLruPolicy.class, SASegmentedLruPolicy::new);
     register(SAArcPolicy.class, SAArcPolicy::new);
-    registerMany(SAHillClimberWindowTinyLfuPolicy.class, SAHillClimberWindowTinyLfuPolicy::policies);
+    register(SAHillClimberWindowTinyLfuPolicy.class, SAHillClimberWindowTinyLfuPolicy::new);
   }
 
   @AutoValue

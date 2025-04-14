@@ -30,16 +30,10 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
 import static com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimber.Adaptation.Type.DECREASE_WINDOW;
 import static com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimber.Adaptation.Type.INCREASE_WINDOW;
 import static com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimber.QueueType.*;
 import static com.google.common.base.Preconditions.checkState;
-import static java.util.Locale.US;
-import static java.util.stream.Collectors.toSet;
 
 /**
  * The Window TinyLfu algorithm where the size of the admission window is adjusted using the a hill
@@ -73,11 +67,10 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
   static final boolean debug = false;
   static final boolean trace = false;
 
-  public SAHillClimberWindowTinyLfuPolicy(HillClimberType strategy, double percentMain,
-                                          HillClimberWindowTinyLfuSettings settings) {
-
-    long maxMain = (long) (settings.maximumSize() * percentMain);
-    this.maxProtected = (long) (maxMain * settings.percentMainProtected());
+  public SAHillClimberWindowTinyLfuPolicy(Config config) {
+    var settings = new BasicSettings(config);
+    long maxMain = (long) (settings.maximumSize() * 0.99);
+    this.maxProtected = (long) (maxMain * 0.8);
     this.maxWindow = settings.maximumSize() - maxMain;
     this.data = new Long2ObjectOpenHashMap<>();
     this.maximumSize = settings.maximumSize();
@@ -86,34 +79,13 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     this.headWindow = new Node();
     this.isFull = false;
 
-    this.strategy = strategy;
-    this.initialPercentMain = percentMain;
-    this.policyStats = new PolicyStats(getPolicyName());
+    this.strategy = HillClimberType.SIMPLE;
+    this.initialPercentMain = 0.99;
+    this.policyStats = new PolicyStats(name());
     this.sketch = new PeriodicResetCountMin4(settings.config());
     this.climber = strategy.create(settings.config());
 
     printSegmentSizes();
-  }
-
-  public String getPolicyName() {
-    return String.format("size-aware.HillClimberWindowTinyLfu (%s %.0f%%%% -> %.0f%%%%)",
-      strategy.name().toLowerCase(US),
-      100 * (1.0 - initialPercentMain),
-      (100.0 * maxWindow) / maximumSize);
-  }
-
-  /**
-   * Returns all variations of this policy based on the configuration parameters.
-   */
-  public static Set<Policy> policies(Config config) {
-    HillClimberWindowTinyLfuSettings settings = new HillClimberWindowTinyLfuSettings(config);
-    Set<Policy> policies = new HashSet<>();
-    for (HillClimberType climber : settings.strategy()) {
-      for (double percentMain : settings.percentMain()) {
-        policies.add(new SAHillClimberWindowTinyLfuPolicy(climber, percentMain, settings));
-      }
-    }
-    return policies;
   }
 
   @Override
@@ -397,7 +369,6 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
 
   @Override
   public void finished() {
-    // policyStats.setName(getPolicyName());
     printSegmentSizes();
 
     long actualWindowSize = data.values().stream().filter(n -> n.queue == WINDOW).mapToLong(node -> node.weight).sum();
@@ -412,8 +383,6 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     checkState(actualProbationSize == calculatedProbationSize,
       "Probation: %s != %s", actualProbationSize, calculatedProbationSize);
     checkState(sizeData <= maximumSize, "Maximum: %s > %s", sizeData, maximumSize);
-
-    System.out.println(getPolicyName() + ": total delay=" + policyStats.totalDelay());
   }
 
   /**
@@ -490,27 +459,5 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
         .add("queue", queue)
         .toString();
     }
-  }
-
-  public static final class HillClimberWindowTinyLfuSettings extends BasicSettings {
-    public HillClimberWindowTinyLfuSettings(Config config) {
-      super(config);
-    }
-
-    public List<Double> percentMain() {
-      return config().getDoubleList("hill-climber-window-tiny-lfu.percent-main");
-    }
-
-    public double percentMainProtected() {
-      return config().getDouble("hill-climber-window-tiny-lfu.percent-main-protected");
-    }
-
-    public Set<HillClimberType> strategy() {
-      return config().getStringList("hill-climber-window-tiny-lfu.strategy").stream()
-        .map(strategy -> strategy.replace('-', '_').toUpperCase(US))
-        .map(HillClimberType::valueOf)
-        .collect(toSet());
-    }
-
   }
 }
