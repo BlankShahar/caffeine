@@ -145,9 +145,7 @@ public final class SBNBHillClimberWindowTinyLfuPolicy implements Policy {
 
     while (true) {
       Prefix victim = heapLRU.min().value();
-      double sPlus = p.lruScoreAfterInsertion();
-      double sMinus = victim.lruScoreAfterEviction();
-      if (p.isFull() || p.itemKey == victim.itemKey || sPlus < sMinus) break;
+      if (p.isFull() || p.itemKey == victim.itemKey) break;
 
       heapLRU.remove(victim.itemKey);
       sizeLRU -= victim.chunksAmount;
@@ -338,30 +336,6 @@ public final class SBNBHillClimberWindowTinyLfuPolicy implements Policy {
       // Idea - recency times the probability of not experiencing delay
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB(),
-        Consts.BANDWIDTH
-      );
-      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double lruScoreAfterInsertion() {
-      if (isFull()) {
-        return 0; // 1-CDF value is 0
-      }
-
-      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        sizeInMB() + Consts.CHUNK_SIZE,
-        Consts.BANDWIDTH
-      );
-      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double lruScoreAfterEviction() {
-      if (isEmpty()) {
-        return recency(); // 1-CDF is 1
-      }
-
-      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        sizeInMB() - Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
       return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
