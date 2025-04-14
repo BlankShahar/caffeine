@@ -244,6 +244,7 @@ public final class Registry {
     register(BBNBConvexPolicy.class, BBNBConvexPolicy::new);
     register(BBNBSegmentedLruPolicy.class, BBNBSegmentedLruPolicy::new);
     register(BBNBArcPolicy.class, BBNBArcPolicy::new);
+    register(BBNBHillClimberWindowTinyLfuPolicy.class, BBNBHillClimberWindowTinyLfuPolicy::new);
   }
 
   private void registerNonBinaryScoreBased() {
@@ -254,6 +255,7 @@ public final class Registry {
     register(SBNBConvexPolicy.class, SBNBConvexPolicy::new);
     register(SBNBSegmentedLruPolicy.class, SBNBSegmentedLruPolicy::new);
     register(SBNBArcPolicy.class, SBNBArcPolicy::new);
+    register(SBNBHillClimberWindowTinyLfuPolicy.class, SBNBHillClimberWindowTinyLfuPolicy::new);
   }
 
   private void registerNonBinaryWhiteBox() {
