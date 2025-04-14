@@ -137,17 +137,12 @@ public final class SBNBHillClimberWindowTinyLfuPolicy implements Policy {
 
   /* ------------------------------  LRU cache (window)  -------------------------- */
   private void waterFillLru(Prefix p) {
-    /* 0. oversize object -> reject */
-    if (p.fullItemChunksAmount > maxCacheLRU) return;
-
-    /* 1. direct fit */
     long available_space = Math.min(maxCacheLRU - sizeLRU, p.fullItemChunksAmount - p.chunksAmount);
     p.chunksAmount += available_space;
     sizeLRU += available_space;
     updateHeap(heapLRU, p);
     if (p.isFull()) return;
 
-    /* 2. need space: evict whole prefixes (LRU order) */
     while (true) {
       Prefix victim = heapLRU.min().value();
       double sPlus = p.lruScoreAfterInsertion();
@@ -168,17 +163,19 @@ public final class SBNBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private void movePrefixToLru(Prefix v) {
-    if (v.fullItemChunksAmount > maxCacheLRU) {
+    if (v.chunksAmount > maxCacheLRU) {
       v.chunksAmount = 0;
+      updateHeap(heapLFU, v);
+      updateHeap(heapLRU, v);
       return;
     }
-    while (sizeLRU + v.fullItemChunksAmount > maxCacheLRU) {
+    while (sizeLRU + v.chunksAmount > maxCacheLRU) {
       Prefix victim = heapLRU.min().value();
       heapLRU.remove(victim.itemKey);
       sizeLRU -= victim.chunksAmount;
       victim.chunksAmount = 0;
     }
-    sizeLRU += v.fullItemChunksAmount;
+    sizeLRU += v.chunksAmount;
     updateHeap(heapLRU, v);
   }
 
@@ -224,11 +221,13 @@ public final class SBNBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private void movePrefixToLfu(Prefix v) {
-    if (v.fullItemChunksAmount > maxCacheLFU) {
+    if (v.chunksAmount > maxCacheLFU) {
       v.chunksAmount = 0;
+      updateHeap(heapLFU, v);
+      updateHeap(heapLRU, v);
       return;
     }
-    while (sizeLFU + v.fullItemChunksAmount > maxCacheLFU) {
+    while (sizeLFU + v.chunksAmount > maxCacheLFU) {
       Prefix victim = heapLFU.min().value();
       heapLFU.remove(victim.itemKey);
       sizeLFU -= victim.chunksAmount;
