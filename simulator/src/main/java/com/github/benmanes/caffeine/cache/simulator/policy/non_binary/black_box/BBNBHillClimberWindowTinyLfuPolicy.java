@@ -22,7 +22,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
 
   /* ------------------------------  configuration  ------------------------------ */
-  private static final int REFINEMENT_INTERVAL = 1_000;   // operations per hill‑climb step
+  private static final int REFINEMENT_INTERVAL = 1;   // operations per hill‑climb step
   private static final double STEP_SIZE = 0.05;        // Δq
 
   /* ------------------------------  global state  -------------------------------- */
@@ -42,7 +42,7 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
   private long sizeLFU;
 
   /* hill‑climber parameters */
-  private double q = 0;            // virtual slope parameter
+  private double q = 1;            // virtual slope parameter
   private double ratio = 0.5;      // = 1 / 2^q  – fraction of window (LRU)
   private double previousTotalDelay = 0;
   private double currentTotalDelay = 0;
@@ -77,7 +77,7 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
     }
 
     /* stats bookkeeping */
-    p.lastAccessTime++;
+    p.lastAccessTime = now;
     p.requestCount++;
     recordDelayStats(p, e.retrievalDelay());
     updateParameters(e.retrievalDelay());
@@ -85,7 +85,7 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
     /* routing logic */
     if (heapLRU.contains(key)) {
       waterFillLru(p);
-    } else if (heapLFU.contains(key)) {
+    } else if (maxCacheLRU == 0 || heapLFU.contains(key)) {
       waterFillLfu(p);
     } else {
       waterFillLru(p);                       // first‑time admission
@@ -102,14 +102,17 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
     } else {
       q = Math.max(0, q - STEP_SIZE);
     }
-    ratio = 1 / Math.pow(2, q);
 
+    ratio = 1 / Math.pow(2, q);
     long newMaxLRU = (long) Math.floor(ratio * fullCacheSize);
     long newMaxLFU = fullCacheSize - newMaxLRU;
 
     /* rebalance by moving prefixes */
     if (newMaxLRU < maxCacheLRU) {            // shrink LRU, grow LFU
       long toMove = maxCacheLRU - newMaxLRU;
+      maxCacheLRU = newMaxLRU;
+      maxCacheLFU = newMaxLFU;
+
       while (toMove > 0 && !heapLRU.isEmpty()) {
         Prefix victim = heapLRU.min().value();
         heapLRU.remove(victim.itemKey);
@@ -117,8 +120,11 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
         toMove -= victim.chunksAmount;
         movePrefixToLfu(victim);
       }
-    } else if (newMaxLRU > maxCacheLRU) {     // grow LRU, shrink LFU
+    } else {     // grow LRU, shrink LFU
       long toMove = newMaxLRU - maxCacheLRU;
+      maxCacheLRU = newMaxLRU;
+      maxCacheLFU = newMaxLFU;
+
       while (toMove > 0 && !heapLFU.isEmpty()) {
         Prefix victim = heapLFU.min().value();
         heapLFU.remove(victim.itemKey);
@@ -181,14 +187,12 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
   private void movePrefixToLru(Prefix v) {
     if (v.chunksAmount > maxCacheLRU) {
       v.chunksAmount = 0;
-      updateHeap(heapLFU, v);
-      updateHeap(heapLRU, v);
+      if (heapLFU.contains(v.itemKey)) heapLFU.remove(v.itemKey);
       return;
     }
     waterDrawLru(v.chunksAmount);
     sizeLRU += v.chunksAmount;
-    updateHeap(heapLFU, v);
-    updateHeap(heapLRU, v);
+    heapLRU.insert(v.itemKey, v);
   }
 
   /* ------------------------------  LFU cache (main)  --------------------------- */
@@ -245,14 +249,12 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
   private void movePrefixToLfu(Prefix v) {
     if (v.chunksAmount > maxCacheLFU) {
       v.chunksAmount = 0;
-      updateHeap(heapLFU, v);
-      updateHeap(heapLRU, v);
+      if (heapLRU.contains(v.itemKey)) heapLRU.remove(v.itemKey);
       return;
     }
     waterDrawLfu(v.chunksAmount);
     sizeLFU += v.chunksAmount;
-    updateHeap(heapLFU, v);
-    updateHeap(heapLRU, v);
+    heapLFU.insert(v.itemKey, v);
   }
 
   /* ------------------------------  helpers  ------------------------------------ */
