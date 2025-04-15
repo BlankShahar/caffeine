@@ -135,6 +135,24 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
     currentTotalDelay = 0;
   }
 
+  private void waterDrawLru(long spaceNeeded) {
+    if (spaceNeeded > maxCacheLRU)
+      return;
+    while (sizeLRU + spaceNeeded > maxCacheLRU) {
+      Prefix victim = heapLRU.min().value();
+      shrinkPrefixLRU(victim);
+    }
+  }
+
+  private void waterDrawLfu(long spaceNeeded) {
+    if (spaceNeeded > maxCacheLFU)
+      return;
+    while (sizeLFU + spaceNeeded > maxCacheLFU) {
+      Prefix victim = heapLFU.min().value();
+      shrinkPrefixLFU(victim);
+    }
+  }
+
   /* ------------------------------  LRU cache (window)  -------------------------- */
   private void waterFillLru(Prefix p) {
     long available_space = Math.min(maxCacheLRU - sizeLRU, p.fullItemChunksAmount - p.chunksAmount);
@@ -167,13 +185,9 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
       updateHeap(heapLRU, v);
       return;
     }
-    while (sizeLRU + v.chunksAmount > maxCacheLRU) {
-      Prefix victim = heapLRU.min().value();
-      heapLRU.remove(victim.itemKey);
-      sizeLRU -= victim.chunksAmount;
-      victim.chunksAmount = 0;
-    }
+    waterDrawLru(v.chunksAmount);
     sizeLRU += v.chunksAmount;
+    updateHeap(heapLFU, v);
     updateHeap(heapLRU, v);
   }
 
@@ -216,6 +230,18 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
     stats.recordAdmission();
   }
 
+  private void shrinkPrefixLRU(Prefix prefix) {
+    if (prefix.isEmpty()) {
+      return;
+    }
+    prefix.removeChunk();
+    sizeLRU--;
+    updateHeap(heapLRU, prefix);
+
+    stats.recordOperation();
+    stats.recordEviction();
+  }
+
   private void movePrefixToLfu(Prefix v) {
     if (v.chunksAmount > maxCacheLFU) {
       v.chunksAmount = 0;
@@ -223,14 +249,10 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
       updateHeap(heapLRU, v);
       return;
     }
-    while (sizeLFU + v.chunksAmount > maxCacheLFU) {
-      Prefix victim = heapLFU.min().value();
-      heapLFU.remove(victim.itemKey);
-      sizeLFU -= victim.chunksAmount;
-      victim.chunksAmount = 0;
-    }
+    waterDrawLfu(v.chunksAmount);
     sizeLFU += v.chunksAmount;
     updateHeap(heapLFU, v);
+    updateHeap(heapLRU, v);
   }
 
   /* ------------------------------  helpers  ------------------------------------ */
@@ -318,46 +340,10 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
       return frequency() * (1 - source.calculateCDF(TimeCalculations.calculateTransmissionTime(t, Consts.BANDWIDTH)));
     }
 
-    double lfuScoreAfterInsertion() {
-      if (isFull()) return 0;
-      double t = sizeInMB() + Consts.CHUNK_SIZE;
-      return frequency() * (1 - source.calculateCDF(TimeCalculations.calculateTransmissionTime(t, Consts.BANDWIDTH)));
-    }
-
-    double lfuScoreAfterEviction() {
-      if (isEmpty()) return frequency();
-      double t = sizeInMB() - Consts.CHUNK_SIZE;
-      return frequency() * (1 - source.calculateCDF(TimeCalculations.calculateTransmissionTime(t, Consts.BANDWIDTH)));
-    }
-
     public double lruScore() {
       // Idea - recency times the probability of not experiencing delay
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB(),
-        Consts.BANDWIDTH
-      );
-      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double lruScoreAfterInsertion() {
-      if (isFull()) {
-        return 0; // 1-CDF value is 0
-      }
-
-      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        sizeInMB() + Consts.CHUNK_SIZE,
-        Consts.BANDWIDTH
-      );
-      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double lruScoreAfterEviction() {
-      if (isEmpty()) {
-        return recency(); // 1-CDF is 1
-      }
-
-      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        sizeInMB() - Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
       return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
