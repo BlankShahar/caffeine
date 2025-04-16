@@ -43,7 +43,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
 
     q = 1;
     ratio = 0.5;
-    refinementInterval = 1_000;
+    refinementInterval = 1_000_000;
     stepSize = 0.05;
     previousTotalDelay = 0;
     currentTotalDelay = 0;

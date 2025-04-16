@@ -22,7 +22,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 public final class SBNBHillClimberWindowTinyLfuPolicy implements Policy {
 
   /* ------------------------------  configuration  ------------------------------ */
-  private static final int REFINEMENT_INTERVAL = 1;   // operations per hill‑climb step
+  private static final int REFINEMENT_INTERVAL = 1_000_000;   // operations per hill‑climb step
   private static final double STEP_SIZE = 0.05;        // Δq
 
   /* ------------------------------  global state  -------------------------------- */
