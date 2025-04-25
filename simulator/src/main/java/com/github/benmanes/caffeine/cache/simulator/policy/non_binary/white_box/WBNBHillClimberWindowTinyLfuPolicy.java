@@ -22,11 +22,11 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
-  final long fullCacheSize; // in chunks
+  final long maximumCacheSize; // in chunks
   long firstCacheSize, secondCacheSize;
   long currentFirstCacheSize, currentSecondCacheSize; // in chunks
-  final long refinementInterval;
-  final double stepSize;
+  final long REFINEMENT_INTERVAL;
+  final double STEP_SIZE;
   double q, ratio;
   double previousTotalDelay, currentTotalDelay;
   final PolicyStats policyStats;
@@ -39,14 +39,6 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
 
     this.data = new Long2ObjectOpenHashMap<>();
     this.requests = new ArrayDeque<>();
-    currentTime = 0;
-
-    q = 1;
-    ratio = 0.5;
-    refinementInterval = 1_000_000;
-    stepSize = 0.05;
-    previousTotalDelay = 0;
-    currentTotalDelay = 0;
 
     this.firstCacheScoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixesFirstCache);
     this.secondCacheScoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixesSecondCache);
@@ -54,11 +46,19 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
 
-    this.fullCacheSize = settings.maximumSize();
-    this.firstCacheSize = (long) Math.floor(ratio * fullCacheSize);
-    this.secondCacheSize = (long) Math.ceil((1 - ratio) * fullCacheSize);
+    this.maximumCacheSize = settings.maximumSize();
+    this.firstCacheSize = (long) Math.floor(ratio * maximumCacheSize);
+    this.secondCacheSize = (long) Math.ceil((1 - ratio) * maximumCacheSize);
     this.currentFirstCacheSize = 0;
     this.currentSecondCacheSize = 0;
+
+    currentTime = 0;
+    q = 1;
+    ratio = 0.5;
+    REFINEMENT_INTERVAL = 1_000_000;;
+    STEP_SIZE = 0.05;
+    previousTotalDelay = 0;
+    currentTotalDelay = 0;
   }
 
   @Override
@@ -122,17 +122,17 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
   private void updateParameters(double retrievalDelay) {
     currentTotalDelay += retrievalDelay;
 
-    if (currentTime % refinementInterval == 0) {
+    if (currentTime % REFINEMENT_INTERVAL == 0) {
       if (currentTotalDelay < previousTotalDelay) {
-        q += stepSize;
+        q += STEP_SIZE;
       } else {
-        q = Math.max(0, q - stepSize);
+        q = Math.max(0, q - STEP_SIZE);
       }
       double previousFirstCacheSize = firstCacheSize, previousSecondCacheSize = secondCacheSize;
 
       ratio = 1 / Math.pow(2, q);
-      firstCacheSize = (long) Math.floor(ratio * fullCacheSize);
-      secondCacheSize = (long) Math.ceil((1 - ratio) * fullCacheSize);
+      firstCacheSize = (long) Math.floor(ratio * maximumCacheSize);
+      secondCacheSize = (long) Math.ceil((1 - ratio) * maximumCacheSize);
 
       double x = Math.max(0, previousFirstCacheSize - firstCacheSize);
       double y = Math.max(0, previousSecondCacheSize - secondCacheSize);

@@ -22,8 +22,8 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
 
   /* ------------------------------  configuration  ------------------------------ */
-  private static final int REFINEMENT_INTERVAL = 1_000_000;   // operations per hill‑climb step
-  private static final double STEP_SIZE = 0.05;        // Δq
+  private final int REFINEMENT_INTERVAL; // = 1_000_000;   // operations per hill‑climb step
+  private final double STEP_SIZE;        // Δq
 
   /* ------------------------------  global state  -------------------------------- */
   private final PolicyStats stats;
@@ -33,7 +33,7 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
   private final Source source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
   /* cache capacities (chunks) */
-  private final long fullCacheSize;
+  private final long maximumCacheSize;
   private long maxCacheLRU;
   private long maxCacheLFU;
 
@@ -53,14 +53,17 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
 
   public BBNBHillClimberWindowTinyLfuPolicy(Config cfg) {
     var settings = new BasicSettings(cfg);
-    this.fullCacheSize = settings.maximumSize();
-    this.maxCacheLRU = fullCacheSize / 2;
-    this.maxCacheLFU = fullCacheSize - maxCacheLRU;
+    this.maximumCacheSize = settings.maximumSize();
+    this.maxCacheLRU = maximumCacheSize / 2;
+    this.maxCacheLFU = maximumCacheSize - maxCacheLRU;
 
     this.stats = new PolicyStats(name());
     this.data = new Long2ObjectOpenHashMap<>();
-    this.heapLRU = new SearchableMinHeap<>((int) fullCacheSize, this::compareLRU);
-    this.heapLFU = new SearchableMinHeap<>((int) fullCacheSize, this::compareLFU);
+    this.heapLRU = new SearchableMinHeap<>((int) maximumCacheSize, this::compareLRU);
+    this.heapLFU = new SearchableMinHeap<>((int) maximumCacheSize, this::compareLFU);
+
+    REFINEMENT_INTERVAL = 1_000_000;;
+    STEP_SIZE = 0.05;
   }
 
   /* ------------------------------  main entry  ---------------------------------- */
@@ -104,8 +107,8 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
     }
 
     ratio = 1 / Math.pow(2, q);
-    long newMaxLRU = (long) Math.floor(ratio * fullCacheSize);
-    long newMaxLFU = fullCacheSize - newMaxLRU;
+    long newMaxLRU = (long) Math.floor(ratio * maximumCacheSize);
+    long newMaxLFU = maximumCacheSize - newMaxLRU;
 
     /* rebalance by moving prefixes */
     if (newMaxLRU < maxCacheLRU) {            // shrink LRU, grow LFU

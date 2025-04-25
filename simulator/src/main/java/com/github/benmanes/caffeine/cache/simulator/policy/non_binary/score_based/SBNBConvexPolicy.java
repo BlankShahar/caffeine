@@ -23,8 +23,8 @@ public final class SBNBConvexPolicy implements Policy {
   final Queue<Long> requests;
   static long currentTime;
   static double alpha, maxRecency, maxFrequency;
-  final long refinementInterval;
-  final double stepSize;
+  final long REFINEMENT_INTERVAL;
+  final double STEP_SIZE;
   double q;
   double previousTotalDelay, currentTotalDelay;
   final long maximumCacheSize; // in chunks
@@ -39,23 +39,21 @@ public final class SBNBConvexPolicy implements Policy {
 
     this.data = new Long2ObjectOpenHashMap<>();
     this.requests = new ArrayDeque<>();
-
-    currentTime = 0;
-    alpha = 0.5;
-    maxRecency = 0;
-    maxFrequency = 0;
-    refinementInterval = 1_000_000;
-    stepSize = 0.05;
-    q = 1;
-    previousTotalDelay = 0;
-    currentTotalDelay = 0;
-
     this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
 
+    currentTime = 0;
 
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
+    alpha = 0.5;
+    maxRecency = 0;
+    maxFrequency = 0;
+    REFINEMENT_INTERVAL = 1_000_000;;
+    STEP_SIZE = 0.05;
+    q = 1;
+    previousTotalDelay = 0;
+    currentTotalDelay = 0;
   }
 
   @Override
@@ -109,11 +107,11 @@ public final class SBNBConvexPolicy implements Policy {
       rebuildHeap();
     }
 
-    if (currentTime % refinementInterval == 0) {
+    if (currentTime % REFINEMENT_INTERVAL == 0) {
       if (currentTotalDelay < previousTotalDelay) {
-        q += stepSize;
+        q += STEP_SIZE;
       } else {
-        q = Math.max(0, q - stepSize);
+        q = Math.max(0, q - STEP_SIZE);
       }
       alpha = 1 / Math.pow(2, q);
       rebuildHeap();
