@@ -27,6 +27,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual.GdsfPolic
 import com.github.benmanes.caffeine.cache.simulator.policy.irr.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.black_box.*;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.generic.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.score_based.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.white_box.WBNBHillClimberWindowTinyLfuPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy;
@@ -234,6 +235,7 @@ public final class Registry {
     registerNonBinaryBlackBox();
     registerNonBinaryScoreBased();
     registerNonBinaryWhiteBox();
+    registerNonBinaryGeneric();
   }
 
   private void registerNonBinaryBlackBox() {
@@ -260,6 +262,17 @@ public final class Registry {
 
   private void registerNonBinaryWhiteBox() {
     register(WBNBHillClimberWindowTinyLfuPolicy.class, WBNBHillClimberWindowTinyLfuPolicy::new);
+  }
+
+  private void registerNonBinaryGeneric() {
+    register(GNBLfuPolicy.class, GNBLfuPolicy::new);
+    register(GNBLruPolicy.class, GNBLruPolicy::new);
+    register(GNBHyperbolicPolicy.class, GNBHyperbolicPolicy::new);
+    register(GNBLrfuPolicy.class, GNBLrfuPolicy::new);
+    register(GNBConvexPolicy.class, GNBConvexPolicy::new);
+    register(GNBSegmentedLruPolicy.class, GNBSegmentedLruPolicy::new);
+    register(GNBArcPolicy.class, GNBArcPolicy::new);
+    register(GNBHillClimberWindowTinyLfuPolicy.class, GNBHillClimberWindowTinyLfuPolicy::new);
   }
 
   private void registerSizeAware() {
