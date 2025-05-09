@@ -167,6 +167,12 @@ public class SearchableMinHeap<K, V> {
     return value;
   }
 
+  public void upsert(K k, V v) {
+    if (this.contains(k))
+      this.remove(k);
+    this.insert(k, v);
+  }
+
   public Pair<K, V> extractMin() {
     Assert.assertCondition(this.size > 0, "Cannot extract from empty heap");
 
@@ -350,7 +356,7 @@ public class SearchableMinHeap<K, V> {
     this.maxSize = size;
   }
 
-  public boolean isEmpty(){
+  public boolean isEmpty() {
     return size == 0;
   }
 }
