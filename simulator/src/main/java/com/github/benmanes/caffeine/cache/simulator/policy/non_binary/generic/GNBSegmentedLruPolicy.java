@@ -122,6 +122,9 @@ public final class GNBSegmentedLruPolicy implements Policy {
   }
 
   private void waterFillProtected(Prefix prefix) {
+    // TODO: Implement water fill for protected prefixes -
+    //  demote to probation, remove from probation if necessary to do so
+    //  and insert new chunks to protected
     long chunksToFill = Math.min(
       prefix.fullItemChunksAmount - prefix.chunksAmount,
       maxProtectedSize - currentProbationSize
