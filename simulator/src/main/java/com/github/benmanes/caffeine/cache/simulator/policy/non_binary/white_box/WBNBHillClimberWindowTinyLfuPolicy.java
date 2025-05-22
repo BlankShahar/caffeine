@@ -55,7 +55,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     currentTime = 0;
     q = 1;
     ratio = 0.5;
-    REFINEMENT_INTERVAL = 1_000_000;;
+    REFINEMENT_INTERVAL = 1_000_000;
     STEP_SIZE = 0.05;
     previousTotalDelay = 0;
     currentTotalDelay = 0;

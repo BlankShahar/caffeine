@@ -48,7 +48,7 @@ public final class BBNBConvexPolicy implements Policy {
     alpha = 0.5;
     maxRecency = 0;
     maxFrequency = 0;
-    REFINEMENT_INTERVAL = 1_000_000;;
+    REFINEMENT_INTERVAL = 1_000_000;
     STEP_SIZE = 0.05;
     q = 1;
     previousTotalDelay = 0;

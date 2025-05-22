@@ -62,7 +62,7 @@ public final class SBNBHillClimberWindowTinyLfuPolicy implements Policy {
     this.heapLRU = new SearchableMinHeap<>((int) maximumCacheSize, this::compareLRU);
     this.heapLFU = new SearchableMinHeap<>((int) maximumCacheSize, this::compareLFU);
 
-    REFINEMENT_INTERVAL = 1_000_000;;
+    REFINEMENT_INTERVAL = 1_000_000;
     STEP_SIZE = 0.05;
   }
 

@@ -1,6 +1,5 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.non_binary;
 
-
 public final class TimeCalculations {
   /**
    * Calculate the delay of fetching a partial cached object.

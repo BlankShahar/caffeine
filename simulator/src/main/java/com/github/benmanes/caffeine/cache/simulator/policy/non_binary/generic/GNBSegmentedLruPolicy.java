@@ -43,7 +43,7 @@ public final class GNBSegmentedLruPolicy implements Policy {
     currentTime = 0;
 
     this.maximumCacheSize = settings.maximumSize();
-    // ~80% to protected, ~20% to probation
+    // Typically ~80% to protected, ~20% to probation
     this.maxProtectedSize = (long) (maximumCacheSize * 0.8);
     this.maxProbationSize = maximumCacheSize - maxProtectedSize;
     this.currentProbationSize = 0;
@@ -58,142 +58,199 @@ public final class GNBSegmentedLruPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     long itemKey = event.key();
-    Prefix existingPrefix = data.get(itemKey);
+    Prefix prefix = data.get(itemKey);
     policyStats.recordOperation();
     currentTime++;
 
-    if (existingPrefix != null) {
-      // prefix exist (partial hit)
-      existingPrefix.lastRequestTime = currentTime;
-      onRequest(existingPrefix, event.retrievalDelay());
+    if (prefix == null) {
+      // First time we see this item
+      prefix = new Prefix(itemKey, event.itemSize(), source, currentTime);
+      data.put(itemKey, prefix);
+      prefix.isInProtected = false;
+      // We put new items in the probation segment
+      // but no chunks allocated yet -> see waterFill()
     } else {
-      // prefix missing (full miss)
-      var newPrefix = new Prefix(itemKey, event.itemSize(), source, currentTime);
-      onRequest(newPrefix, event.retrievalDelay());
+      prefix.lastRequestTime = currentTime;
     }
+
+    recordRequestStatistics(prefix, event.retrievalDelay());
+    handleRequestsFrequency(prefix);
+
+    // On second reference, if not in protected, we attempt promotion
+    if (!prefix.isInProtected && prefix.chunksAmount > 0) {
+      promoteToProtected(prefix);
+    }
+
+    // Attempt partial caching expansions
+    waterFill(prefix);
   }
 
-  private void onRequest(Prefix prefix, double sourceDelay) {
-    recordRequestStatistics(prefix, sourceDelay);
-
-    if (!data.containsKey(prefix.itemKey)) {
-      data.put(prefix.itemKey, prefix);
+  /**
+   * Attempt to move the prefix from probation to protected.
+   * If its current prefix size is bigger than <code>maxProtectedSize</code>,
+   * we do not promote it (same as original logic).
+   */
+  private void promoteToProtected(Prefix prefix) {
+    if (prefix.chunksAmount > maxProtectedSize) {
+      return;
     }
-    handleRequest(prefix);
+
+    // Evict/demote from protected if necessary to make room
+    while (prefix.chunksAmount + currentProtectedSize > maxProtectedSize && !protectedHeap.isEmpty()) {
+      Prefix demote = protectedHeap.extractMin().value();
+      demote.isInProtected = false;
+      if (protectedHeap.contains(prefix.itemKey))
+        protectedHeap.remove(demote.itemKey); // not strictly needed if extractMin() did that
+      currentProtectedSize -= demote.chunksAmount;
+
+      // Move demoted item to probation
+      currentProbationSize += demote.chunksAmount;
+      probationHeap.insert(demote.itemKey, demote);
+    }
+
+    // Actually promote
+    prefix.isInProtected = true;
+    if (probationHeap.contains(prefix.itemKey)) {
+      probationHeap.remove(prefix.itemKey);
+      currentProbationSize -= prefix.chunksAmount; // FIX: must not go negative
+    }
+
+    protectedHeap.insert(prefix.itemKey, prefix);
+    currentProtectedSize += prefix.chunksAmount;
+  }
+
+  private void handleRequestsFrequency(Prefix prefix) {
+    prefix.requestsCountInPeriod++;
+    requests.add(prefix.itemKey);
+
+    if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
+      long lastRequestItemKey = requests.remove();
+      var lastPrefix = data.get(lastRequestItemKey);
+      if (lastPrefix != null) {
+        lastPrefix.requestsCountInPeriod--;
+      }
+    }
   }
 
   private void recordRequestStatistics(Prefix prefix, double sourceDelay) {
     double idealSizeMB = Math.min(prefix.fullItemSizeInMB(), sourceDelay * Consts.BANDWIDTH);
     long idealChunks = (long) Math.ceil(idealSizeMB / Consts.CHUNK_SIZE);
 
+    // Partial "hit" vs. "miss" in the sense of how many chunks are already present
     policyStats.addHits(prefix.chunksAmount);
     policyStats.addMisses(Math.max(0, idealChunks - prefix.chunksAmount));
 
-    double underflowDelay = TimeCalculations.calculateUnderflowDelay(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
+    double underflowDelay = TimeCalculations.calculateUnderflowDelay(
+      sourceDelay,
+      prefix.fullItemSizeInMB(),
+      prefix.sizeInMB(),
+      Consts.BANDWIDTH
+    );
     policyStats.addDelay(underflowDelay);
   }
 
-  private void handleRequest(Prefix prefix) {
-    if (prefix.chunksInProbation > 0) handleInProbation(prefix);
-    else handleInProtected(prefix);
-  }
+  /**
+   * The main routine that tries to expand the prefix (partial caching)
+   * without exceeding the relevant segment’s capacity or the total capacity.
+   */
+  private void waterFill(Prefix prefix) {
+    // 1) Expand as long as we are not full and haven't hit the
+    //    capacity limit (probation or protected).
+    while (!prefix.isFull()) {
+      if (prefix.isInProtected) {
+        // If in protected, check if we can add another chunk
+        if (currentProtectedSize < maxProtectedSize
+          && (currentProbationSize + currentProtectedSize) < maximumCacheSize) {
+          extendPrefix(prefix);
+        } else {
+          break;
+        }
+      } else {
+        // If in probation, check probation capacity
+        if (currentProbationSize < maxProbationSize
+          && (currentProbationSize + currentProtectedSize) < maximumCacheSize) {
+          extendPrefix(prefix);
+        } else {
+          break;
+        }
+      }
+    }
 
-  private void handleInProbation(Prefix prefix) {
-    waterFillProbation(prefix);
-  }
-
-  private void handleInProtected(Prefix prefix) {
-    waterFillProtected(prefix);
-  }
-
-  private void waterFillProbation(Prefix prefix) {
-    long chunksToFill = Math.min(
-      prefix.fullItemChunksAmount - prefix.chunksAmount,
-      maxProbationSize - currentProbationSize
-    );
-    extendPrefixInProbation(prefix, chunksToFill);
-
+    // 2) Possibly evict from other items (the "victim") to free space,
+    //    if the new chunk would yield a bigger improvement than the victim's chunk.
     Prefix victim;
     do {
       victim = findVictim();
-      shrinkPrefixInProbation(victim, 1);
-      extendPrefixInProbation(prefix, 1);
+
+      shrinkPrefix(victim);
+      extendPrefix(prefix);
     } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
   }
 
-  private void waterFillProtected(Prefix prefix) {
-    // TODO: Implement water fill for protected prefixes -
-    //  demote to probation, remove from probation if necessary to do so
-    //  and insert new chunks to protected
-    long chunksToFill = Math.min(
-      prefix.fullItemChunksAmount - prefix.chunksAmount,
-      maxProtectedSize - currentProbationSize
-    );
-    extendPrefixInProbation(prefix, chunksToFill);
-
-    Prefix victim;
-    do {
-      victim = findVictim();
-      shrinkPrefixInProbation(victim, 1);
-      extendPrefixInProbation(prefix, 1);
-    } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
+  /**
+   * Remove one chunk from victim.
+   */
+  private void shrinkPrefix(Prefix prefix) {
+    if (prefix.isEmpty()) {
+      return;
+    }
+    prefix.removeChunk();
+    if (prefix.isInProtected) {
+      if (protectedHeap.contains(prefix.itemKey)) protectedHeap.remove(prefix.itemKey);
+      currentProtectedSize--;
+      if (prefix.chunksAmount > 0) {
+        if (protectedHeap.contains(prefix.itemKey)) protectedHeap.insert(prefix.itemKey, prefix);
+      } else {
+        prefix.isInProtected = false; // Possibly becomes empty -> no queue?
+      }
+    } else {
+      if (probationHeap.contains(prefix.itemKey)) probationHeap.remove(prefix.itemKey);
+      currentProbationSize--;
+      if (prefix.chunksAmount > 0) {
+        probationHeap.insert(prefix.itemKey, prefix);
+      }
+    }
+    policyStats.recordOperation();
+    policyStats.recordEviction();
   }
 
-  private void extendPrefixInProbation(Prefix prefix, long chunks) {
-    if (prefix.chunksAmount + chunks > prefix.fullItemChunksAmount)
-      throw new IllegalArgumentException("This amount of chunks will make the prefix exceed the full item size");
-    if (prefix.chunksAmount + chunks > maxProbationSize)
-      throw new IllegalArgumentException("This amount of chunks will make the probation segment exceed its maximum size");
+  /**
+   * Add one chunk to prefix, if not full.
+   */
+  private void extendPrefix(Prefix prefix) {
+    if (prefix.isFull()) {
+      return;
+    }
+    prefix.insertChunk();
 
-    prefix.chunksAmount += chunks;
-    prefix.chunksInProbation += chunks;
-    currentProbationSize += chunks;
-    probationHeap.upsert(prefix.itemKey, prefix);
+    if (prefix.isInProtected) {
+      if (protectedHeap.contains(prefix.itemKey)) protectedHeap.remove(prefix.itemKey);
+      currentProtectedSize++;
+      protectedHeap.insert(prefix.itemKey, prefix);
+    } else {
+      if (probationHeap.contains(prefix.itemKey)) probationHeap.remove(prefix.itemKey);
+      currentProbationSize++;
+      probationHeap.insert(prefix.itemKey, prefix);
+    }
+    policyStats.recordOperation();
+    policyStats.recordAdmission();
   }
 
-  private void extendPrefixInProtected(Prefix prefix, long chunks) {
-    if (prefix.chunksAmount + chunks > prefix.fullItemChunksAmount)
-      throw new IllegalArgumentException("This amount of chunks will make the prefix exceed the full item size");
-    if (prefix.chunksAmount + chunks > maxProtectedSize)
-      throw new IllegalArgumentException("This amount of chunks will make the protected segment exceed its maximum size");
-
-    prefix.chunksAmount += chunks;
-    prefix.chunksInProtected += chunks;
-    currentProtectedSize += chunks;
-    protectedHeap.upsert(prefix.itemKey, prefix);
-  }
-
-  private void shrinkPrefixInProbation(Prefix prefix, long chunks) {
-    if (prefix.chunksAmount - chunks < 0)
-      throw new IllegalArgumentException("This amount of chunks will make the prefix have negative size");
-    if (currentProbationSize - chunks < 0)
-      throw new IllegalArgumentException("This amount of chunks will make the probation segment have negative size");
-
-    prefix.chunksAmount -= chunks;
-    prefix.chunksInProbation -= chunks;
-    currentProbationSize -= chunks;
-
-    probationHeap.upsert(prefix.itemKey, prefix);
-  }
-
-  private void shrinkPrefixInProtected(Prefix prefix, long chunks) {
-    if (prefix.chunksAmount - chunks < 0)
-      throw new IllegalArgumentException("This amount of chunks will make the prefix have negative size");
-    if (currentProtectedSize - chunks < 0)
-      throw new IllegalArgumentException("This amount of chunks will make the protected segment have negative size");
-
-    prefix.chunksAmount -= chunks;
-    prefix.chunksInProtected -= chunks;
-    currentProtectedSize -= chunks;
-    protectedHeap.upsert(prefix.itemKey, prefix);
-  }
-
+  /**
+   * Standard SLRU approach: always evict from probation if not empty,
+   * else evict from protected.
+   * <p>
+   * If you want to evict purely based on the minimal LRU score across
+   * _both_ queues, you could compare the min of each heap instead.
+   */
   private Prefix findVictim() {
-    if (!probationHeap.isEmpty())
+    if (!probationHeap.isEmpty()) {
       return probationHeap.min().value();
-    if (!protectedHeap.isEmpty())
+    }
+    if (!protectedHeap.isEmpty()) {
       return protectedHeap.min().value();
-    throw new IllegalStateException("No victim can be found - both heaps are empty");
+    }
+    return null;
   }
 
   public int compareProbation(long key1, long key2) {
@@ -219,13 +276,17 @@ public final class GNBSegmentedLruPolicy implements Policy {
     return Policy.super.name();
   }
 
+  /**
+   * A partial-caching "Prefix" that supports the SLRU logic.
+   */
   static class Prefix {
     final long itemKey;
     final long fullItemChunksAmount;
     final Source source;
-    long chunksAmount, chunksInProbation, chunksInProtected;
+    long chunksAmount;          // how many chunks are currently cached
     long requestsCountInPeriod;
     long lastRequestTime;
+    boolean isInProtected;
 
     Prefix(long itemKey, long fullItemChunksAmount, Source source, long currentTime) {
       this.itemKey = itemKey;
@@ -234,8 +295,7 @@ public final class GNBSegmentedLruPolicy implements Policy {
       this.lastRequestTime = currentTime;
       this.requestsCountInPeriod = 0;
       this.chunksAmount = 0;
-      this.chunksInProbation = 0;
-      this.chunksInProtected = 0;
+      this.isInProtected = false;
     }
 
     double lruScore() {

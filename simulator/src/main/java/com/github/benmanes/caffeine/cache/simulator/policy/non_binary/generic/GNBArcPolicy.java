@@ -12,7 +12,6 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.So
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.Queue;
@@ -190,17 +189,14 @@ public final class GNBArcPolicy implements Policy {
   }
 
   private void waterFill(Prefix prefix) {
-    // TODO: Multiple cache chunk pipeline as non-binary
     long currentHeapSize = prefix.queue == Q.T1 || prefix.queue == Q.B1 ? sizeT1 : sizeT2;
     long maximumHeapSize = prefix.queue == Q.T1 || prefix.queue == Q.B1 ? p : maximumCacheSize - p;
     while (!prefix.isFull() && currentHeapSize < maximumHeapSize) {
       extendPrefix(prefix);
     }
-
     Prefix victim;
     do {
       victim = findVictim(prefix.queue);
-      if (victim == null) break;
       shrinkPrefix(victim);
       extendPrefix(prefix);
     } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
@@ -246,7 +242,6 @@ public final class GNBArcPolicy implements Policy {
     }
   }
 
-  @Nullable
   private Prefix findVictim(Q queue) {
     if (queue == Q.T1 && !heapT1.isEmpty()) return heapT1.min().value();
     if (queue == Q.T2 && !heapT2.isEmpty()) return heapT2.min().value();

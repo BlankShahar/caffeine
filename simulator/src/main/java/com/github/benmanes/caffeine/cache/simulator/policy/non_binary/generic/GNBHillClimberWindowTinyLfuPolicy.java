@@ -63,14 +63,12 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
     this.heapLFU = new SearchableMinHeap<>((int) maximumCacheSize, this::compareLFU);
 
     REFINEMENT_INTERVAL = 1_000_000;
-    ;
     STEP_SIZE = 0.05;
   }
 
   /* ------------------------------  main entry  ---------------------------------- */
   @Override
   public void record(AccessEvent e) {
-    // TODO: Multiple cache chunk pipeline as non-binary
     now++;
     opCounter++;
     stats.recordOperation();
@@ -165,26 +163,27 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   /* ------------------------------  LRU cache (window)  -------------------------- */
-  private void waterFillLru(Prefix p) {
-    long available_space = Math.min(maxCacheLRU - sizeLRU, p.fullItemChunksAmount - p.chunksAmount);
-    p.chunksAmount += available_space;
+  private void waterFillLru(Prefix prefix) {
+    long available_space = Math.min(maxCacheLRU - sizeLRU, prefix.fullItemChunksAmount - prefix.chunksAmount);
+    prefix.chunksAmount += available_space;
     sizeLRU += available_space;
-    updateHeap(heapLRU, p);
-    if (p.isFull()) return;
+    updateHeap(heapLRU, prefix);
+    if (prefix.isFull()) return;
 
     Prefix victim;
     do {
       victim = heapLRU.min().value();
+
       heapLRU.remove(victim.itemKey);
       sizeLRU -= victim.chunksAmount;
 
       movePrefixToLfu(victim);
 
-      available_space = Math.min(maxCacheLRU - sizeLRU, p.fullItemChunksAmount - p.chunksAmount);
-      p.chunksAmount += available_space;
+      available_space = Math.min(maxCacheLRU - sizeLRU, prefix.fullItemChunksAmount - prefix.chunksAmount);
+      prefix.chunksAmount += available_space;
       sizeLRU += available_space;
-      updateHeap(heapLRU, p);
-    } while (p.isFull() || p.itemKey == victim.itemKey);
+      updateHeap(heapLRU, prefix);
+    } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
   }
 
   private void movePrefixToLru(Prefix v) {
