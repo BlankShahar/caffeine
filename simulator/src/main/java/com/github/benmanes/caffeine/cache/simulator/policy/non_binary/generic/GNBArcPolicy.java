@@ -197,6 +197,7 @@ public final class GNBArcPolicy implements Policy {
     Prefix victim;
     do {
       victim = findVictim(prefix.queue);
+      if (victim == null) break;
       shrinkPrefix(victim);
       extendPrefix(prefix);
     } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));

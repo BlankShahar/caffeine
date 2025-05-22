@@ -181,7 +181,7 @@ public final class GNBSegmentedLruPolicy implements Policy {
     Prefix victim;
     do {
       victim = findVictim();
-
+      if (victim == null) break;
       shrinkPrefix(victim);
       extendPrefix(prefix);
     } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
