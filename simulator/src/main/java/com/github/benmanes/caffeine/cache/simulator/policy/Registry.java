@@ -273,6 +273,7 @@ public final class Registry {
     register(GNBSegmentedLruPolicy.class, GNBSegmentedLruPolicy::new);
     register(GNBArcPolicy.class, GNBArcPolicy::new);
     register(GNBHillClimberWindowTinyLfuPolicy.class, GNBHillClimberWindowTinyLfuPolicy::new);
+    register(GNBHillClimberWindowTinyLfuPolicy2.class, GNBHillClimberWindowTinyLfuPolicy2::new);
   }
 
   private void registerSizeAware() {

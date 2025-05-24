@@ -17,9 +17,13 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  * Non‑binary Hill‑Climber Window‑TinyLFU.
  * cacheLRU  – admission window (recency based)
  * cacheLFU  – main cache (frequency based)
+ * <p>
+ * This version is more similar to black-box variation,
+ *  i.e., in the waterFillLru if the victim is the prefix itself -
+ *  we stop, and we don't move the prefix to the LFU cache.
  */
-@Policy.PolicySpec(name = "non-binary.generic.HillClimberWindowTinyLFU")
-public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.generic.HillClimberWindowTinyLFU2")
+public final class GNBHillClimberWindowTinyLfuPolicy2 implements Policy {
 
   /* ------------------------------  configuration  ------------------------------ */
   private final int REFINEMENT_INTERVAL; // = 1_000_000;   // operations per hill‑climb step
@@ -51,7 +55,7 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
   /* time */
   private static long now = 0;
 
-  public GNBHillClimberWindowTinyLfuPolicy(Config cfg) {
+  public GNBHillClimberWindowTinyLfuPolicy2(Config cfg) {
     var settings = new BasicSettings(cfg);
     this.maximumCacheSize = settings.maximumSize();
     this.maxCacheLRU = maximumCacheSize / 2;
@@ -86,7 +90,7 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
     updateParameters(e.retrievalDelay());
 
     /* routing logic */
-    if (maxCacheLFU == 0 || heapLRU.contains(key)) {
+    if (heapLRU.contains(key)) {
       waterFillLru(p);
     } else if (maxCacheLRU == 0 || heapLFU.contains(key)) {
       waterFillLfu(p);
@@ -118,8 +122,10 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
 
       while (toMove > 0 && !heapLRU.isEmpty()) {
         Prefix victim = heapLRU.min().value();
-        movePrefixToLfu(victim);
+        heapLRU.remove(victim.itemKey);
+        sizeLRU -= victim.chunksAmount;
         toMove -= victim.chunksAmount;
+        movePrefixToLfu(victim);
       }
     } else {     // grow LRU, shrink LFU
       long toMove = newMaxLRU - maxCacheLRU;
@@ -128,8 +134,10 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
 
       while (toMove > 0 && !heapLFU.isEmpty()) {
         Prefix victim = heapLFU.min().value();
-        movePrefixToLru(victim);
+        heapLFU.remove(victim.itemKey);
+        sizeLFU -= victim.chunksAmount;
         toMove -= victim.chunksAmount;
+        movePrefixToLru(victim);
       }
     }
 
@@ -141,7 +149,8 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private void waterDrawLru(long spaceNeeded) {
-    if (spaceNeeded > maxCacheLRU) return;
+    if (spaceNeeded > maxCacheLRU)
+      return;
     while (sizeLRU + spaceNeeded > maxCacheLRU) {
       Prefix victim = heapLRU.min().value();
       shrinkPrefixLRU(victim);
@@ -149,7 +158,8 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private void waterDrawLfu(long spaceNeeded) {
-    if (spaceNeeded > maxCacheLFU) return;
+    if (spaceNeeded > maxCacheLFU)
+      return;
     while (sizeLFU + spaceNeeded > maxCacheLFU) {
       Prefix victim = heapLFU.min().value();
       shrinkPrefixLFU(victim);
@@ -157,43 +167,39 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   /* ------------------------------  LRU cache (window)  -------------------------- */
-  private void waterFillLru(Prefix prefix) {
-    long available_space = Math.min(maxCacheLRU - sizeLRU, prefix.fullItemChunksAmount - prefix.chunksAmount);
-    prefix.chunksAmount += available_space;
+  private void waterFillLru(Prefix p) {
+    long available_space = Math.min(maxCacheLRU - sizeLRU, p.fullItemChunksAmount - p.chunksAmount);
+    p.chunksAmount += available_space;
     sizeLRU += available_space;
-    if (available_space > 0) updateHeap(heapLRU, prefix);
+    updateHeap(heapLRU, p);
+    if (p.isFull()) return;
 
     Prefix victim;
     do {
       victim = heapLRU.min().value();
-      movePrefixToLfu(victim);
-      if (prefix.itemKey == victim.itemKey) {
-        waterFillLfu(prefix);
-        break;
-      }
+      if (p.itemKey == victim.itemKey) break;
 
-      available_space = Math.min(maxCacheLRU - sizeLRU, prefix.fullItemChunksAmount - prefix.chunksAmount);
-      prefix.chunksAmount += available_space;
+      heapLRU.remove(victim.itemKey);
+      sizeLRU -= victim.chunksAmount;
+
+      movePrefixToLfu(victim);
+
+      available_space = Math.min(maxCacheLRU - sizeLRU, p.fullItemChunksAmount - p.chunksAmount);
+      p.chunksAmount += available_space;
       sizeLRU += available_space;
-      updateHeap(heapLRU, prefix);
-    } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
+      updateHeap(heapLRU, p);
+    } while (p.isFull() || victim.itemKey == p.itemKey);
   }
 
   private void movePrefixToLru(Prefix v) {
-    sizeLFU -= v.chunksAmount;
-    heapLFU.remove(v.itemKey);
-
     if (v.chunksAmount > maxCacheLRU) {
-      // There isn't enough space for the whole prefix
-      // so move part of the prefix, until the LRU cache is full
-      long available_space = maxCacheLRU - sizeLRU;
-      v.chunksAmount = available_space;
-      sizeLRU += available_space;
-    } else {
-      waterDrawLru(v.chunksAmount);
-      sizeLRU += v.chunksAmount;
+      v.chunksAmount = 0;
+      if (heapLFU.contains(v.itemKey)) heapLFU.remove(v.itemKey);
+      return;
     }
-    if (!v.isEmpty()) heapLRU.insert(v.itemKey, v);
+    waterDrawLru(v.chunksAmount);
+    sizeLRU += v.chunksAmount;
+    heapLRU.insert(v.itemKey, v);
   }
 
   /* ------------------------------  LFU cache (main)  --------------------------- */
@@ -207,7 +213,7 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
       victim = heapLFU.min().value();
       shrinkPrefixLFU(victim);
       extendPrefixLFU(prefix);
-    } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
+    } while (prefix.isFull() || victim.itemKey == prefix.itemKey);
   }
 
   private void shrinkPrefixLFU(Prefix prefix) {
@@ -247,20 +253,14 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private void movePrefixToLfu(Prefix v) {
-    sizeLRU -= v.chunksAmount;
-    heapLRU.remove(v.itemKey);
-
     if (v.chunksAmount > maxCacheLFU) {
-      // There isn't enough space for the whole prefix
-      // so move part of the prefix, until the LFU cache is full
-      long available_space = maxCacheLFU - sizeLFU;
-      v.chunksAmount = available_space;
-      sizeLFU += available_space;
-    } else {
-      waterDrawLfu(v.chunksAmount);
-      sizeLFU += v.chunksAmount;
+      v.chunksAmount = 0;
+      if (heapLRU.contains(v.itemKey)) heapLRU.remove(v.itemKey);
+      return;
     }
-    if (!v.isEmpty()) heapLFU.insert(v.itemKey, v);
+    waterDrawLfu(v.chunksAmount);
+    sizeLFU += v.chunksAmount;
+    heapLFU.insert(v.itemKey, v);
   }
 
   /* ------------------------------  helpers  ------------------------------------ */
@@ -350,7 +350,10 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
 
     public double lruScore() {
       // Idea - recency times the probability of not experiencing delay
-      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(sizeInMB(), Consts.BANDWIDTH);
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        sizeInMB(),
+        Consts.BANDWIDTH
+      );
       return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
