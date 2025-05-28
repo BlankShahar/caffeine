@@ -172,7 +172,6 @@ public final class GNBHillClimberWindowTinyLfuPolicy2 implements Policy {
     p.chunksAmount += available_space;
     sizeLRU += available_space;
     updateHeap(heapLRU, p);
-    if (p.isFull()) return;
 
     Prefix victim;
     do {
@@ -188,7 +187,7 @@ public final class GNBHillClimberWindowTinyLfuPolicy2 implements Policy {
       p.chunksAmount += available_space;
       sizeLRU += available_space;
       updateHeap(heapLRU, p);
-    } while (p.isFull() || victim.itemKey == p.itemKey);
+    } while (!(p.isFull() || p.itemKey == victim.itemKey));
   }
 
   private void movePrefixToLru(Prefix v) {
@@ -213,7 +212,7 @@ public final class GNBHillClimberWindowTinyLfuPolicy2 implements Policy {
       victim = heapLFU.min().value();
       shrinkPrefixLFU(victim);
       extendPrefixLFU(prefix);
-    } while (prefix.isFull() || victim.itemKey == prefix.itemKey);
+    } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
   }
 
   private void shrinkPrefixLFU(Prefix prefix) {
