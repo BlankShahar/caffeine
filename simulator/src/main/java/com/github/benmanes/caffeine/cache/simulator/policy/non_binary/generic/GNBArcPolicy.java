@@ -51,7 +51,6 @@ public final class GNBArcPolicy implements Policy {
   public void record(AccessEvent event) {
     policyStats.recordOperation();
     currentTime++;
-
     long itemKey = event.key();
     Prefix prefix = data.get(itemKey);
     if (prefix == null) {
@@ -173,8 +172,6 @@ public final class GNBArcPolicy implements Policy {
   }
 
   private void waterDraw(Q queue, long spaceNeeded) {
-    if (spaceNeeded == 0) return;
-
     long currentHeapSize = (queue == Q.T1) ? sizeT1 : sizeT2;
     long max = (queue == Q.T1) ? p : maximumCacheSize - p;
     if (spaceNeeded > max)
@@ -215,7 +212,8 @@ public final class GNBArcPolicy implements Policy {
     if (prefix.queue == Q.T1) sizeT1++;
     else if (prefix.queue == Q.T2) sizeT2++;
 
-    heap.upsert(prefix.itemKey, prefix);
+    if (!prefix.isEmpty()) heap.upsert(prefix.itemKey, prefix);
+    else if (heap.contains(prefix.itemKey)) heap.remove(prefix.itemKey);
     policyStats.recordAdmission();
   }
 
