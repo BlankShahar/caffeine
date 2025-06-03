@@ -181,42 +181,27 @@ public final class GNBArcPolicy implements Policy {
       throw new IllegalArgumentException("Not enough space in the queue");
 
     SearchableMinHeap<Long, Prefix> heap = (queue == Q.T1) ? heapT1 : heapT2;
-//    System.out.println("Drawing water...");
     while (currentHeapSize + spaceNeeded > max) {
       if (heap.isEmpty()) return;
       Prefix victim = heap.min().value();
-//      shrinkPrefix(victim);
-      long evictionSize = Math.min(victim.chunksAmount, spaceNeeded);
-      if (evictionSize == 0)
-        System.out.println("Eviction size is zero, something is wrong (" + victim.chunksAmount + ", " + spaceNeeded + ")");
-      shrinkPrefixBySize(victim, evictionSize);
+      shrinkPrefix(victim);
       currentHeapSize = (queue == Q.T1) ? sizeT1 : sizeT2;
     }
-//    System.out.println("Water drawn!");
   }
 
   private void waterFill(Prefix prefix) {
     long currentHeapSize = prefix.queue == Q.T1 || prefix.queue == Q.B1 ? sizeT1 : sizeT2;
     long maximumHeapSize = prefix.queue == Q.T1 || prefix.queue == Q.B1 ? p : maximumCacheSize - p;
-//    while (!prefix.isFull() && currentHeapSize < maximumHeapSize) {
-//      extendPrefix(prefix);
-//    }
-
-    long fillUpSize = Math.min(
-      prefix.fullItemChunksAmount - prefix.chunksAmount,
-      maximumHeapSize - currentHeapSize
-    );
-    extendPrefixBySize(prefix, fillUpSize);
-
+    while (!prefix.isFull() && currentHeapSize < maximumHeapSize) {
+      extendPrefix(prefix);
+    }
     Prefix victim;
-//    System.out.println("Filling water...");
     do {
       victim = findVictim(prefix.queue);
       if (victim == null) break;
       shrinkPrefix(victim);
       extendPrefix(prefix);
     } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
-//    System.out.println("Water filled!");
   }
 
   private void extendPrefix(Prefix prefix) {
@@ -234,19 +219,6 @@ public final class GNBArcPolicy implements Policy {
     policyStats.recordAdmission();
   }
 
-  private void extendPrefixBySize(Prefix prefix, long size) {
-    SearchableMinHeap<Long, Prefix> heap = prefix.queue == Q.T1 ? heapT1 : heapT2;
-//    if (heap.contains(prefix.itemKey)) heap.remove(prefix.itemKey);
-
-    prefix.chunksAmount += size;
-    sizeResident += size;
-    if (prefix.queue == Q.T1) sizeT1 += size;
-    else if (prefix.queue == Q.T2) sizeT2 += size;
-
-    heap.upsert(prefix.itemKey, prefix);
-    policyStats.recordAdmission();
-  }
-
   private void shrinkPrefix(Prefix prefix) {
     if (prefix.isEmpty()) return;
 
@@ -259,31 +231,6 @@ public final class GNBArcPolicy implements Policy {
     else if (prefix.queue == Q.T2) sizeT2--;
 
     if (!prefix.isEmpty()) heap.upsert(prefix.itemKey, prefix);
-    else if (heap.contains(prefix.itemKey)) heap.remove(prefix.itemKey);
-    policyStats.recordEviction();
-
-    if (prefix.isEmpty()) {
-      if (prefix.queue == Q.T1) {
-        prefix.queue = Q.B1;
-        sizeB1 += prefix.chunksAmount;
-      } else {
-        prefix.queue = Q.B2;
-        sizeB2 += prefix.chunksAmount;
-      }
-    }
-  }
-
-  private void shrinkPrefixBySize(Prefix prefix, long size) {
-    SearchableMinHeap<Long, Prefix> heap = prefix.queue == Q.T1 ? heapT1 : heapT2;
-//    if (heap.contains(prefix.itemKey)) heap.remove(prefix.itemKey);
-
-    prefix.chunksAmount -= size;
-    sizeResident -= size;
-    if (prefix.queue == Q.T1) sizeT1 -= size;
-    else if (prefix.queue == Q.T2) sizeT2 -= size;
-
-    if (!prefix.isEmpty()) heap.upsert(prefix.itemKey, prefix);
-    else if (heap.contains(prefix.itemKey)) heap.remove(prefix.itemKey);
     policyStats.recordEviction();
 
     if (prefix.isEmpty()) {
