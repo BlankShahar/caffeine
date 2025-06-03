@@ -231,6 +231,7 @@ public final class GNBArcPolicy implements Policy {
     else if (prefix.queue == Q.T2) sizeT2--;
 
     if (!prefix.isEmpty()) heap.upsert(prefix.itemKey, prefix);
+    else heap.remove(prefix.itemKey);
     policyStats.recordEviction();
 
     if (prefix.isEmpty()) {
