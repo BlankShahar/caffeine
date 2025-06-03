@@ -271,7 +271,7 @@ public final class BBNBHillClimberWindowTinyLfuPolicy implements Policy {
 
   private void updateHeap(SearchableMinHeap<Long, Prefix> heap, Prefix p) {
     if (heap.contains(p.itemKey)) heap.remove(p.itemKey);
-    if (!p.isEmpty()) heap.insert(p.itemKey, p);
+    if (!p.isEmpty()) heap.upsert(p.itemKey, p);
   }
 
   private int compareLRU(long a, long b) {

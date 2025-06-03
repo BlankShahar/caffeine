@@ -168,9 +168,13 @@ public class SearchableMinHeap<K, V> {
   }
 
   public void upsert(K k, V v) {
-    if (this.contains(k))
-      this.remove(k);
-    this.insert(k, v);
+    if (this.contains(k)){
+      int i = getIndex(k);
+      downHeap(i);
+      upHeap(i);
+    }
+    else
+      this.insert(k, v);
   }
 
   public Pair<K, V> extractMin() {

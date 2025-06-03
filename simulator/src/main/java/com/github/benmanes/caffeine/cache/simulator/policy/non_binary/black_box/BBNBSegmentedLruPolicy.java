@@ -105,7 +105,7 @@ public final class BBNBSegmentedLruPolicy implements Policy {
 
       // Move demoted item to probation
       currentProbationSize += demote.chunksAmount;
-      probationHeap.insert(demote.itemKey, demote);
+      probationHeap.upsert(demote.itemKey, demote);
     }
 
     // Actually promote
@@ -115,7 +115,7 @@ public final class BBNBSegmentedLruPolicy implements Policy {
       currentProbationSize -= prefix.chunksAmount; // FIX: must not go negative
     }
 
-    protectedHeap.insert(prefix.itemKey, prefix);
+    protectedHeap.upsert(prefix.itemKey, prefix);
     currentProtectedSize += prefix.chunksAmount;
   }
 
@@ -200,7 +200,7 @@ public final class BBNBSegmentedLruPolicy implements Policy {
       if (protectedHeap.contains(prefix.itemKey)) protectedHeap.remove(prefix.itemKey);
       currentProtectedSize--;
       if (prefix.chunksAmount > 0) {
-        if (protectedHeap.contains(prefix.itemKey)) protectedHeap.insert(prefix.itemKey, prefix);
+        if (protectedHeap.contains(prefix.itemKey)) protectedHeap.upsert(prefix.itemKey, prefix);
       } else {
         prefix.isInProtected = false; // Possibly becomes empty -> no queue?
       }
@@ -208,7 +208,7 @@ public final class BBNBSegmentedLruPolicy implements Policy {
       if (probationHeap.contains(prefix.itemKey)) probationHeap.remove(prefix.itemKey);
       currentProbationSize--;
       if (prefix.chunksAmount > 0) {
-        probationHeap.insert(prefix.itemKey, prefix);
+        probationHeap.upsert(prefix.itemKey, prefix);
       }
     }
     policyStats.recordOperation();
@@ -227,11 +227,11 @@ public final class BBNBSegmentedLruPolicy implements Policy {
     if (prefix.isInProtected) {
       if (protectedHeap.contains(prefix.itemKey)) protectedHeap.remove(prefix.itemKey);
       currentProtectedSize++;
-      protectedHeap.insert(prefix.itemKey, prefix);
+      protectedHeap.upsert(prefix.itemKey, prefix);
     } else {
       if (probationHeap.contains(prefix.itemKey)) probationHeap.remove(prefix.itemKey);
       currentProbationSize++;
-      probationHeap.insert(prefix.itemKey, prefix);
+      probationHeap.upsert(prefix.itemKey, prefix);
     }
     policyStats.recordOperation();
     policyStats.recordAdmission();

@@ -214,7 +214,7 @@ public final class BBNBArcPolicy implements Policy {
     if (prefix.queue == Q.T1) sizeT1++;
     else if (prefix.queue == Q.T2) sizeT2++;
 
-    heap.insert(prefix.itemKey, prefix);
+    heap.upsert(prefix.itemKey, prefix);
     policyStats.recordAdmission();
   }
 
@@ -229,7 +229,7 @@ public final class BBNBArcPolicy implements Policy {
     if (prefix.queue == Q.T1) sizeT1--;
     else if (prefix.queue == Q.T2) sizeT2--;
 
-    if (!prefix.isEmpty()) heap.insert(prefix.itemKey, prefix);
+    if (!prefix.isEmpty()) heap.upsert(prefix.itemKey, prefix);
     policyStats.recordEviction();
 
     if (prefix.isEmpty()) {

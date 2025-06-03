@@ -102,10 +102,16 @@ public final class GNBLruPolicy implements Policy {
   }
 
   private void waterFill(Prefix prefix) {
-    while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
-      extendPrefix(prefix);
-    }
+    long fillUpSize = Math.min(
+      prefix.fullItemChunksAmount - prefix.chunksAmount,
+      maximumCacheSize - currentCacheSize
+    );
+    extendPrefixBySize(prefix, fillUpSize);
 
+//    while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
+//      extendPrefix(prefix);
+//    }
+//
     Prefix victim;
     do {
       victim = findVictim();
@@ -123,7 +129,7 @@ public final class GNBLruPolicy implements Policy {
 
     scoreMinHeap.remove(prefix.itemKey);
     if (prefix.chunksAmount > 0) {
-      scoreMinHeap.insert(prefix.itemKey, prefix);
+      scoreMinHeap.upsert(prefix.itemKey, prefix);
     }
 
     policyStats.recordOperation();
@@ -140,7 +146,22 @@ public final class GNBLruPolicy implements Policy {
     if (scoreMinHeap.contains(prefix.itemKey)) {
       scoreMinHeap.remove(prefix.itemKey);
     }
-    scoreMinHeap.insert(prefix.itemKey, prefix);
+    scoreMinHeap.upsert(prefix.itemKey, prefix);
+
+    policyStats.recordOperation();
+    policyStats.recordAdmission();
+  }
+
+  private void extendPrefixBySize(Prefix prefix, long size) {
+    if (prefix.chunksAmount + size > prefix.fullItemChunksAmount)
+      throw new IllegalArgumentException("Cannot extend prefix #" + prefix.itemKey + " beyond its full size");
+    prefix.chunksAmount += size;
+    currentCacheSize += size;
+
+    if (scoreMinHeap.contains(prefix.itemKey)) {
+      scoreMinHeap.remove(prefix.itemKey);
+    }
+    scoreMinHeap.upsert(prefix.itemKey, prefix);
 
     policyStats.recordOperation();
     policyStats.recordAdmission();

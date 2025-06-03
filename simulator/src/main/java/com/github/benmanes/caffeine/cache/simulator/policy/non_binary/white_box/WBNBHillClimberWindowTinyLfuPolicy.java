@@ -232,7 +232,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
 
     firstCacheScoreMinHeap.remove(prefix.itemKey);
     if (prefix.firstCacheChunksAmount > 0) {
-      firstCacheScoreMinHeap.insert(prefix.itemKey, prefix);
+      firstCacheScoreMinHeap.upsert(prefix.itemKey, prefix);
     }
 
     policyStats.recordOperation();
@@ -249,7 +249,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     if (firstCacheScoreMinHeap.contains(prefix.itemKey)) {
       firstCacheScoreMinHeap.remove(prefix.itemKey);
     }
-    firstCacheScoreMinHeap.insert(prefix.itemKey, prefix);
+    firstCacheScoreMinHeap.upsert(prefix.itemKey, prefix);
 
     policyStats.recordOperation();
     policyStats.recordAdmission();
@@ -264,7 +264,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
 
     secondCacheScoreMinHeap.remove(prefix.itemKey);
     if (prefix.secondCacheChunksAmount > 0) {
-      secondCacheScoreMinHeap.insert(prefix.itemKey, prefix);
+      secondCacheScoreMinHeap.upsert(prefix.itemKey, prefix);
     }
 
     policyStats.recordOperation();
@@ -281,7 +281,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     if (secondCacheScoreMinHeap.contains(prefix.itemKey)) {
       secondCacheScoreMinHeap.remove(prefix.itemKey);
     }
-    secondCacheScoreMinHeap.insert(prefix.itemKey, prefix);
+    secondCacheScoreMinHeap.upsert(prefix.itemKey, prefix);
 
     policyStats.recordOperation();
     policyStats.recordAdmission();

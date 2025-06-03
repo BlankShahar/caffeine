@@ -40,7 +40,7 @@ public final class SALfuPolicy implements Policy {
       policyStats.recordHit();
       minHeap.remove(itemKey); // Re-heapify after frequency change
       item.frequency++;
-      minHeap.insert(itemKey, item);
+      minHeap.upsert(itemKey, item);
     } else {
       // Miss
       policyStats.recordMiss();
@@ -62,7 +62,7 @@ public final class SALfuPolicy implements Policy {
       // Insert new item
       Item newItem = new Item(itemKey, itemSize);
       data.put(itemKey, newItem);
-      minHeap.insert(itemKey, newItem);
+      minHeap.upsert(itemKey, newItem);
       currentCacheSize += itemSize;
       policyStats.recordAdmission();
     }

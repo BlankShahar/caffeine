@@ -43,7 +43,7 @@ public final class SAHyperbolicPolicy implements Policy {
       minHeap.remove(itemKey);
       item.frequency++;
       item.lastAccessTime = currentTime;
-      minHeap.insert(itemKey, item);
+      minHeap.upsert(itemKey, item);
     } else {
       // Miss
       policyStats.recordMiss();
@@ -62,7 +62,7 @@ public final class SAHyperbolicPolicy implements Policy {
 
       Item newItem = new Item(itemKey, itemSize, currentTime);
       data.put(itemKey, newItem);
-      minHeap.insert(itemKey, newItem);
+      minHeap.upsert(itemKey, newItem);
       currentCacheSize += itemSize;
       policyStats.recordAdmission();
     }

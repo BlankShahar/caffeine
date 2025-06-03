@@ -65,7 +65,7 @@ public final class SALrfuPolicy implements Policy {
       stats.recordAdmission();
     }
 
-    heap.insert(node.key, node);
+    heap.upsert(node.key, node);
   }
 
   private void updateScore(Node node) {

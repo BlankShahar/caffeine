@@ -88,7 +88,7 @@ public final class GNBConvexPolicy implements Policy {
     scoreMinHeap.clear();
     for (long itemKey : data.keySet()) {
       Prefix prefix = data.get(itemKey);
-      if (prefix.chunksAmount > 0) scoreMinHeap.insert(itemKey, data.get(itemKey));
+      if (prefix.chunksAmount > 0) scoreMinHeap.upsert(itemKey, data.get(itemKey));
     }
   }
 
@@ -171,7 +171,7 @@ public final class GNBConvexPolicy implements Policy {
 
     scoreMinHeap.remove(prefix.itemKey);
     if (prefix.chunksAmount > 0) {
-      scoreMinHeap.insert(prefix.itemKey, prefix);
+      scoreMinHeap.upsert(prefix.itemKey, prefix);
     }
 
     policyStats.recordOperation();
@@ -188,7 +188,7 @@ public final class GNBConvexPolicy implements Policy {
     if (scoreMinHeap.contains(prefix.itemKey)) {
       scoreMinHeap.remove(prefix.itemKey);
     }
-    scoreMinHeap.insert(prefix.itemKey, prefix);
+    scoreMinHeap.upsert(prefix.itemKey, prefix);
 
     policyStats.recordOperation();
     policyStats.recordAdmission();

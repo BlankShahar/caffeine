@@ -144,7 +144,9 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
     if (spaceNeeded > maxCacheLRU) return;
     while (sizeLRU + spaceNeeded > maxCacheLRU) {
       Prefix victim = heapLRU.min().value();
-      shrinkPrefixLRU(victim);
+//      shrinkPrefixLRU(victim);
+      long evictionSize = Math.min(victim.chunksAmount, spaceNeeded);
+      shrinkPrefixLruBySize(victim, evictionSize);
     }
   }
 
@@ -152,7 +154,9 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
     if (spaceNeeded > maxCacheLFU) return;
     while (sizeLFU + spaceNeeded > maxCacheLFU) {
       Prefix victim = heapLFU.min().value();
-      shrinkPrefixLFU(victim);
+//      shrinkPrefixLFU(victim);
+      long evictionSize = Math.min(victim.chunksAmount, spaceNeeded);
+      shrinkPrefixLfuBySize(victim, evictionSize);
     }
   }
 
@@ -193,14 +197,20 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
       waterDrawLru(v.chunksAmount);
       sizeLRU += v.chunksAmount;
     }
-    if (!v.isEmpty()) heapLRU.insert(v.itemKey, v);
+    if (!v.isEmpty()) heapLRU.upsert(v.itemKey, v);
   }
 
   /* ------------------------------  LFU cache (main)  --------------------------- */
   private void waterFillLfu(Prefix prefix) {
-    while (!prefix.isFull() && sizeLFU < maxCacheLFU) {
-      extendPrefixLFU(prefix);
-    }
+//    while (!prefix.isFull() && sizeLFU < maxCacheLFU) {
+//      extendPrefixLFU(prefix);
+//    }
+
+    long fillUpSize = Math.min(
+      prefix.fullItemChunksAmount - prefix.chunksAmount,
+      maxCacheLFU - sizeLFU
+    );
+    extendPrefixLfuBySize(prefix, fillUpSize);
 
     Prefix victim;
     do {
@@ -222,6 +232,19 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
     stats.recordEviction();
   }
 
+  private void shrinkPrefixLfuBySize(Prefix prefix, long size) {
+    if (prefix.chunksAmount - size < 0)
+      throw new IllegalArgumentException("Cannot shrink prefix #" + prefix.itemKey + " below zero chunks");
+    if (sizeLFU - size < 0)
+      throw new IllegalArgumentException("Cannot shrink prefix #" + prefix.itemKey + " below zero size in LFU cache");
+    prefix.chunksAmount -= size;
+    sizeLFU -= size;
+    updateHeap(heapLFU, prefix);
+
+    stats.recordOperation();
+    stats.recordEviction();
+  }
+
   private void extendPrefixLFU(Prefix prefix) {
     if (prefix.isFull()) {
       return;
@@ -234,12 +257,40 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
     stats.recordAdmission();
   }
 
+  private void extendPrefixLfuBySize(Prefix prefix, long size) {
+    if (prefix.chunksAmount + size > prefix.fullItemChunksAmount)
+      throw new IllegalArgumentException("Cannot extend prefix #" + prefix.itemKey + " beyond its full size");
+    if (prefix.chunksAmount + size > maxCacheLFU)
+      throw new IllegalArgumentException("Cannot extend prefix #" + prefix.itemKey + " beyond LFU cache size");
+
+    prefix.chunksAmount += size;
+    sizeLFU += size;
+
+    updateHeap(heapLFU, prefix);
+
+    stats.recordOperation();
+    stats.recordAdmission();
+  }
+
   private void shrinkPrefixLRU(Prefix prefix) {
     if (prefix.isEmpty()) {
       return;
     }
     prefix.removeChunk();
     sizeLRU--;
+    updateHeap(heapLRU, prefix);
+
+    stats.recordOperation();
+    stats.recordEviction();
+  }
+
+  private void shrinkPrefixLruBySize(Prefix prefix, long size) {
+    if (prefix.chunksAmount - size < 0)
+      throw new IllegalArgumentException("Cannot shrink prefix #" + prefix.itemKey + " below zero chunks");
+    if (sizeLRU - size < 0)
+      throw new IllegalArgumentException("Cannot shrink prefix #" + prefix.itemKey + " below zero size in LRU cache");
+    prefix.chunksAmount -= size;
+    sizeLRU -= size;
     updateHeap(heapLRU, prefix);
 
     stats.recordOperation();
@@ -260,7 +311,7 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
       waterDrawLfu(v.chunksAmount);
       sizeLFU += v.chunksAmount;
     }
-    if (!v.isEmpty()) heapLFU.insert(v.itemKey, v);
+    if (!v.isEmpty()) heapLFU.upsert(v.itemKey, v);
   }
 
   /* ------------------------------  helpers  ------------------------------------ */
@@ -274,7 +325,7 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
 
   private void updateHeap(SearchableMinHeap<Long, Prefix> heap, Prefix p) {
     if (heap.contains(p.itemKey)) heap.remove(p.itemKey);
-    if (!p.isEmpty()) heap.insert(p.itemKey, p);
+    if (!p.isEmpty()) heap.upsert(p.itemKey, p);
   }
 
   private int compareLRU(long a, long b) {

@@ -119,7 +119,7 @@ public final class GNBLfuPolicy implements Policy {
 
     scoreMinHeap.remove(prefix.itemKey);
     if (prefix.chunksAmount > 0) {
-      scoreMinHeap.insert(prefix.itemKey, prefix);
+      scoreMinHeap.upsert(prefix.itemKey, prefix);
     }
 
     policyStats.recordOperation();
@@ -136,7 +136,7 @@ public final class GNBLfuPolicy implements Policy {
     if (scoreMinHeap.contains(prefix.itemKey)) {
       scoreMinHeap.remove(prefix.itemKey);
     }
-    scoreMinHeap.insert(prefix.itemKey, prefix);
+    scoreMinHeap.upsert(prefix.itemKey, prefix);
 
     policyStats.recordOperation();
     policyStats.recordAdmission();
