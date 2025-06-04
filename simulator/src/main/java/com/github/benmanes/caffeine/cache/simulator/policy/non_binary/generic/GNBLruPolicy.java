@@ -102,16 +102,16 @@ public final class GNBLruPolicy implements Policy {
   }
 
   private void waterFill(Prefix prefix) {
-    long fillUpSize = Math.min(
-      prefix.fullItemChunksAmount - prefix.chunksAmount,
-      maximumCacheSize - currentCacheSize
-    );
-    extendPrefixBySize(prefix, fillUpSize);
+//    long fillUpSize = Math.min(
+//      prefix.fullItemChunksAmount - prefix.chunksAmount,
+//      maximumCacheSize - currentCacheSize
+//    );
+//    extendPrefixBySize(prefix, fillUpSize);
 
-//    while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
-//      extendPrefix(prefix);
-//    }
-//
+    while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
+      extendPrefix(prefix);
+    }
+
     Prefix victim;
     do {
       victim = findVictim();
