@@ -97,7 +97,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     final long key = event.key();
-    final int weight = event.itemSize();
+    final int weight = event.itemSize();//(int) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
     policyStats.recordOperation();
     Node node = data.get(key);
     if (sizeData >= (maximumSize >>> 1)) {

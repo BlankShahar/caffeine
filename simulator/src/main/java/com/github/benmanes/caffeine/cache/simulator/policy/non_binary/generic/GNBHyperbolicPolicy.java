@@ -57,7 +57,8 @@ public final class GNBHyperbolicPolicy implements Policy {
       onRequest(existingPrefix, event.retrievalDelay());
     } else {
       // prefix missing (full miss)
-      var newPrefix = new Prefix(itemKey, event.itemSize(), source, currentTime);
+      long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
+      var newPrefix = new Prefix(itemKey, chunksAmount, source, currentTime);
       onRequest(newPrefix, event.retrievalDelay());
     }
   }
@@ -121,10 +122,10 @@ public final class GNBHyperbolicPolicy implements Policy {
     prefix.removeChunk();
     currentCacheSize--;
 
-    scoreMinHeap.remove(prefix.itemKey);
-    if (prefix.chunksAmount > 0) {
+    if (prefix.isEmpty())
+      scoreMinHeap.remove(prefix.itemKey);
+    else
       scoreMinHeap.upsert(prefix.itemKey, prefix);
-    }
 
     policyStats.recordOperation();
     policyStats.recordEviction();
@@ -137,9 +138,9 @@ public final class GNBHyperbolicPolicy implements Policy {
     prefix.insertChunk();
     currentCacheSize++;
 
-    if (scoreMinHeap.contains(prefix.itemKey)) {
-      scoreMinHeap.remove(prefix.itemKey);
-    }
+//    if (scoreMinHeap.contains(prefix.itemKey)) {
+//      scoreMinHeap.remove(prefix.itemKey);
+//    }
     scoreMinHeap.upsert(prefix.itemKey, prefix);
 
     policyStats.recordOperation();

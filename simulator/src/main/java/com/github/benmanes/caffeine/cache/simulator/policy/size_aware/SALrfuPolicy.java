@@ -39,7 +39,8 @@ public final class SALrfuPolicy implements Policy {
 
     Node node = data.get(event.key());
     if (node == null) {
-      node = new Node(event.key(), event.itemSize(), currentTime);
+      long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
+      node = new Node(event.key(), chunksAmount, currentTime);
       data.put(event.key(), node);
     }
     if (!heap.contains(node.key)) {
@@ -48,8 +49,6 @@ public final class SALrfuPolicy implements Policy {
     }
 
     updateScore(node);
-    if (heap.contains(node.key))
-      heap.remove(node.key);
 
     if (node.size > maximumCacheSize) {
       stats.recordRejection();
@@ -65,7 +64,8 @@ public final class SALrfuPolicy implements Policy {
       stats.recordAdmission();
     }
 
-    heap.upsert(node.key, node);
+    if (node.isEmpty() && heap.contains(node.key)) heap.remove(node.key);
+    else heap.upsert(node.key, node);
   }
 
   private void updateScore(Node node) {
@@ -75,8 +75,7 @@ public final class SALrfuPolicy implements Policy {
   }
 
   private void evict() {
-    Node victim = heap.min().value();
-    heap.remove(victim.key);
+    Node victim = heap.extractMin().value();
     currentCacheSize -= victim.chunks;
     victim.chunks = 0;
     stats.recordEviction();

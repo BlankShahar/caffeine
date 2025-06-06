@@ -4,8 +4,6 @@ import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -103,10 +101,10 @@ public final class SAArcPolicy implements Policy {
     sizeT2 += n.size;
   }
 
-  private void onMiss(AccessEvent e) {
-    long size = e.itemSize();
+  private void onMiss(AccessEvent event) {
+    long size = event.itemSize(); // (long) Math.ceil(e.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
     stats.recordMiss();
-    stats.addDelay(e.retrievalDelay());
+    stats.addDelay(event.retrievalDelay());
 
     if (size > maximumCacheSize) {
       return;
@@ -129,10 +127,10 @@ public final class SAArcPolicy implements Policy {
 
     if (size <= (maximumCacheSize - sizeT2)) {
       evictToMakeSpace(Q.T1, size);
-      Node n = new Node(e.key(), size);
+      Node n = new Node(event.key(), size);
       n.q = Q.T1;
       n.appendToTail(headT1);
-      data.put(e.key(), n);
+      data.put(event.key(), n);
       sizeT1 += size;
     }
   }

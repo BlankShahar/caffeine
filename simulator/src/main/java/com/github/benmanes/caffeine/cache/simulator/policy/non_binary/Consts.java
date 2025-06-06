@@ -1,7 +1,7 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.non_binary;
 
 public final class Consts {
-  public static final double CHUNK_SIZE = 0.004; // in MB (4 KB)
+  public static final double CHUNK_SIZE = 1; // in MB (4 KB)
   public static final long BANDWIDTH = 1000; // in MBps
   public static final long REQUESTS_FREQUENCY_PERIOD = 10_000;
   public static final int SOURCE_KEY = 1;

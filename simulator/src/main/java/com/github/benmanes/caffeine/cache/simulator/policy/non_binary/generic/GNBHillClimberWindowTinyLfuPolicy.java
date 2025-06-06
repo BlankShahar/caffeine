@@ -68,22 +68,23 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
 
   /* ------------------------------  main entry  ---------------------------------- */
   @Override
-  public void record(AccessEvent e) {
+  public void record(AccessEvent event) {
     now++;
     opCounter++;
     stats.recordOperation();
-    long key = e.key();
+    long key = event.key();
     Prefix p = data.get(key);
     if (p == null) {
-      p = new Prefix(key, e.itemSize(), source, now);
+      long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
+      p = new Prefix(key, chunksAmount, source, now);
       data.put(key, p);
     }
 
     /* stats bookkeeping */
     p.lastAccessTime = now;
     p.requestCount++;
-    recordDelayStats(p, e.retrievalDelay());
-    updateParameters(e.retrievalDelay());
+    recordDelayStats(p, event.retrievalDelay());
+    updateParameters(event.retrievalDelay());
 
     /* routing logic */
     if (maxCacheLFU == 0 || heapLRU.contains(key)) {
@@ -323,9 +324,9 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
     stats.addDelay(TimeCalculations.calculateUnderflowDelay(srcDelay, p.fullSizeInMB(), p.sizeInMB(), Consts.BANDWIDTH));
   }
 
-  private void updateHeap(SearchableMinHeap<Long, Prefix> heap, Prefix p) {
-    if (heap.contains(p.itemKey)) heap.remove(p.itemKey);
-    if (!p.isEmpty()) heap.upsert(p.itemKey, p);
+  private void updateHeap(SearchableMinHeap<Long, Prefix> heap, Prefix prefix) {
+    if (prefix.isEmpty() && heap.contains(prefix.itemKey)) heap.remove(prefix.itemKey);
+    else heap.upsert(prefix.itemKey, prefix);
   }
 
   private int compareLRU(long a, long b) {

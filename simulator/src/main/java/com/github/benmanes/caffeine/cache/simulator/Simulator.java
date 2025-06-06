@@ -106,8 +106,11 @@ public final class Simulator {
       }
 
       var futures = policies.stream()
-          .map(PolicyActor::completed)
-          .toArray(CompletableFuture<?>[]::new);
+        .map(policy -> policy.completed().thenRun(() ->
+          System.out.println("Finished running policy: " + policy.getPolicyName())
+        ))
+        .toArray(CompletableFuture[]::new);
+
       CompletableFuture.allOf(futures).join();
     }
   }

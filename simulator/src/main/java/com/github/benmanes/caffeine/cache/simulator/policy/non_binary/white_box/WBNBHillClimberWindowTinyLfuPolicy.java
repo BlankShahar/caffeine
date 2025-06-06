@@ -74,7 +74,8 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
       onRequest(existingPrefix, event.retrievalDelay());
     } else {
       // prefix missing (full miss)
-      var newPrefix = new Prefix(itemKey, event.itemSize(), source, currentTime);
+      long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
+      var newPrefix = new Prefix(itemKey, chunksAmount, source, currentTime);
       onRequest(newPrefix, event.retrievalDelay());
     }
   }

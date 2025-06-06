@@ -30,7 +30,7 @@ public final class SAHyperbolicPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     long itemKey = event.key();
-    long itemSize = event.itemSize();
+    long itemSize = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
     double retrievalDelay = event.retrievalDelay();
 
     policyStats.recordOperation();
@@ -40,7 +40,6 @@ public final class SAHyperbolicPolicy implements Policy {
     if (item != null) {
       // Hit
       policyStats.recordHit();
-      minHeap.remove(itemKey);
       item.frequency++;
       item.lastAccessTime = currentTime;
       minHeap.upsert(itemKey, item);

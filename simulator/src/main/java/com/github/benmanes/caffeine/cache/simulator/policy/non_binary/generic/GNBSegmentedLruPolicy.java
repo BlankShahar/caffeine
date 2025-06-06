@@ -64,7 +64,8 @@ public final class GNBSegmentedLruPolicy implements Policy {
 
     if (prefix == null) {
       // First time we see this item
-      prefix = new Prefix(itemKey, event.itemSize(), source, currentTime);
+      long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
+      prefix = new Prefix(itemKey, chunksAmount, source, currentTime);
       data.put(itemKey, prefix);
       prefix.isInProtected = false;
       // We put new items in the probation segment
@@ -99,8 +100,6 @@ public final class GNBSegmentedLruPolicy implements Policy {
     while (prefix.chunksAmount + currentProtectedSize > maxProtectedSize && !protectedHeap.isEmpty()) {
       Prefix demote = protectedHeap.extractMin().value();
       demote.isInProtected = false;
-      if (protectedHeap.contains(prefix.itemKey))
-        protectedHeap.remove(demote.itemKey); // not strictly needed if extractMin() did that
       currentProtectedSize -= demote.chunksAmount;
 
       // Move demoted item to probation
@@ -112,7 +111,7 @@ public final class GNBSegmentedLruPolicy implements Policy {
     prefix.isInProtected = true;
     if (probationHeap.contains(prefix.itemKey)) {
       probationHeap.remove(prefix.itemKey);
-      currentProbationSize -= prefix.chunksAmount; // FIX: must not go negative
+      currentProbationSize -= Math.min(prefix.chunksAmount, currentProbationSize);
     }
 
     protectedHeap.upsert(prefix.itemKey, prefix);
@@ -204,11 +203,9 @@ public final class GNBSegmentedLruPolicy implements Policy {
         prefix.isInProtected = false; // Possibly becomes empty -> no queue?
       }
     } else {
-      if (probationHeap.contains(prefix.itemKey)) probationHeap.remove(prefix.itemKey);
       currentProbationSize--;
-      if (prefix.chunksAmount > 0) {
-        probationHeap.upsert(prefix.itemKey, prefix);
-      }
+      if (prefix.isEmpty()) probationHeap.remove(prefix.itemKey);
+      else probationHeap.upsert(prefix.itemKey, prefix);
     }
     policyStats.recordOperation();
     policyStats.recordEviction();

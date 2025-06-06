@@ -26,6 +26,7 @@ public final class GNBLfuPolicy implements Policy {
   final PolicyStats policyStats;
   final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
+  int currentTime;
 
   public GNBLfuPolicy(Config config) {
     var settings = new BasicSettings(config);
@@ -40,10 +41,14 @@ public final class GNBLfuPolicy implements Policy {
 
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
+    this.currentTime = 0;
   }
 
   @Override
   public void record(AccessEvent event) {
+    this.currentTime++;
+//    System.out.println(currentTime);
+
     long itemKey = event.key();
     var existingPrefix = data.getOrDefault(itemKey, null);
     policyStats.recordOperation();
@@ -53,7 +58,8 @@ public final class GNBLfuPolicy implements Policy {
       onRequest(existingPrefix, event.retrievalDelay());
     } else {
       // prefix missing (full miss)
-      var newPrefix = new Prefix(itemKey, event.itemSize(), source);
+      long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
+      var newPrefix = new Prefix(itemKey, chunksAmount, source);
       onRequest(newPrefix, event.retrievalDelay());
     }
   }
@@ -117,10 +123,10 @@ public final class GNBLfuPolicy implements Policy {
     prefix.removeChunk();
     currentCacheSize--;
 
-    scoreMinHeap.remove(prefix.itemKey);
-    if (prefix.chunksAmount > 0) {
+    if (prefix.isEmpty())
+      scoreMinHeap.remove(prefix.itemKey);
+    else
       scoreMinHeap.upsert(prefix.itemKey, prefix);
-    }
 
     policyStats.recordOperation();
     policyStats.recordEviction();
@@ -133,9 +139,9 @@ public final class GNBLfuPolicy implements Policy {
     prefix.insertChunk();
     currentCacheSize++;
 
-    if (scoreMinHeap.contains(prefix.itemKey)) {
-      scoreMinHeap.remove(prefix.itemKey);
-    }
+//    if (scoreMinHeap.contains(prefix.itemKey)) {
+//      scoreMinHeap.remove(prefix.itemKey);
+//    }
     scoreMinHeap.upsert(prefix.itemKey, prefix);
 
     policyStats.recordOperation();

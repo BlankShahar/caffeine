@@ -54,7 +54,8 @@ public final class GNBArcPolicy implements Policy {
     long itemKey = event.key();
     Prefix prefix = data.get(itemKey);
     if (prefix == null) {
-      prefix = new Prefix(itemKey, event.itemSize(), source, currentTime);
+      long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
+      prefix = new Prefix(itemKey, chunksAmount, source, currentTime);
       data.put(itemKey, prefix);
     } else {
       prefix.lastRequestTime = currentTime;
