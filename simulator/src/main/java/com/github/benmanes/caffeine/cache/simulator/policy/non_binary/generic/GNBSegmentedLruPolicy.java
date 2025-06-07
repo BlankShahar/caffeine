@@ -98,7 +98,7 @@ public final class GNBSegmentedLruPolicy implements Policy {
 
       if (demote.chunksAmount > maxProbationSize) continue;
       // Free up space in probation if needed
-      while(demote.chunksAmount + currentProbationSize > maxProbationSize) {
+      while (demote.chunksAmount + currentProbationSize > maxProbationSize) {
         Prefix eviction = probationHeap.extractMin().value();
         currentProbationSize -= eviction.chunksAmount;
         policyStats.recordEviction();
@@ -111,10 +111,9 @@ public final class GNBSegmentedLruPolicy implements Policy {
     // Actually promote
     prefix.isInProtected = true;
     if (probationHeap.contains(prefix.itemKey)) {
-    probationHeap.remove(prefix.itemKey);
-    currentProbationSize -= Math.min(prefix.chunksAmount, currentProbationSize);
+      probationHeap.remove(prefix.itemKey);
+      currentProbationSize -= prefix.chunksAmount;
     }
-
     protectedHeap.upsert(prefix.itemKey, prefix);
     currentProtectedSize += prefix.chunksAmount;
   }
@@ -173,11 +172,11 @@ public final class GNBSegmentedLruPolicy implements Policy {
       if (prefix.isInProtected)
         victim = findVictimFromProtected();
       else victim = findVictimFromProbation();
-      if (victim == null) break;
+      if (victim == null || victim.itemKey == prefix.itemKey) break;
 
       shrinkPrefix(victim);
       extendPrefix(prefix);
-    } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
+    } while (prefix.isFull());
   }
 
   /**
