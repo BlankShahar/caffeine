@@ -101,6 +101,7 @@ public final class GNBSegmentedLruPolicy implements Policy {
       while (demote.chunksAmount + currentProbationSize > maxProbationSize) {
         Prefix eviction = probationHeap.extractMin().value();
         currentProbationSize -= eviction.chunksAmount;
+        eviction.chunksAmount = 0;
         policyStats.recordEviction();
       }
       // Move demoted item to probation
