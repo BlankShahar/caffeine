@@ -69,18 +69,14 @@ public final class GNBSegmentedLruPolicy implements Policy {
       data.put(itemKey, prefix);
       prefix.isInProtected = false;
       // We put new items in the probation segment
-      // but no chunks allocated yet -> see waterFill()
-    } else {
-      prefix.lastRequestTime = currentTime;
-    }
+    } else prefix.lastRequestTime = currentTime;
 
     recordRequestStatistics(prefix, event.retrievalDelay());
     handleRequestsFrequency(prefix);
 
     // On second reference, if not in protected, we attempt promotion
-    if (!prefix.isInProtected && prefix.chunksAmount > 0) {
+    if (!prefix.isInProtected && prefix.chunksAmount > 0)
       promoteToProtected(prefix);
-    }
 
     // Attempt partial caching expansions
     waterFill(prefix);
@@ -92,9 +88,7 @@ public final class GNBSegmentedLruPolicy implements Policy {
    * we do not promote it (same as original logic).
    */
   private void promoteToProtected(Prefix prefix) {
-    if (prefix.chunksAmount > maxProtectedSize) {
-      return;
-    }
+    if (prefix.chunksAmount > maxProtectedSize) return;
 
     // Evict/demote from protected if necessary to make room
     while (prefix.chunksAmount + currentProtectedSize > maxProtectedSize && !protectedHeap.isEmpty()) {
@@ -102,6 +96,13 @@ public final class GNBSegmentedLruPolicy implements Policy {
       demote.isInProtected = false;
       currentProtectedSize -= demote.chunksAmount;
 
+      if (demote.chunksAmount > maxProbationSize) continue;
+      // Free up space in probation if needed
+      while(demote.chunksAmount + currentProbationSize > maxProbationSize) {
+        Prefix eviction = probationHeap.extractMin().value();
+        currentProbationSize -= eviction.chunksAmount;
+        policyStats.recordEviction();
+      }
       // Move demoted item to probation
       currentProbationSize += demote.chunksAmount;
       probationHeap.upsert(demote.itemKey, demote);
@@ -110,8 +111,8 @@ public final class GNBSegmentedLruPolicy implements Policy {
     // Actually promote
     prefix.isInProtected = true;
     if (probationHeap.contains(prefix.itemKey)) {
-      probationHeap.remove(prefix.itemKey);
-      currentProbationSize -= Math.min(prefix.chunksAmount, currentProbationSize);
+    probationHeap.remove(prefix.itemKey);
+    currentProbationSize -= Math.min(prefix.chunksAmount, currentProbationSize);
     }
 
     protectedHeap.upsert(prefix.itemKey, prefix);
@@ -155,32 +156,25 @@ public final class GNBSegmentedLruPolicy implements Policy {
   private void waterFill(Prefix prefix) {
     // 1) Expand as long as we are not full and haven't hit the
     //    capacity limit (probation or protected).
-    while (!prefix.isFull()) {
-      if (prefix.isInProtected) {
-        // If in protected, check if we can add another chunk
-        if (currentProtectedSize < maxProtectedSize
-          && (currentProbationSize + currentProtectedSize) < maximumCacheSize) {
-          extendPrefix(prefix);
-        } else {
-          break;
-        }
-      } else {
-        // If in probation, check probation capacity
-        if (currentProbationSize < maxProbationSize
-          && (currentProbationSize + currentProtectedSize) < maximumCacheSize) {
-          extendPrefix(prefix);
-        } else {
-          break;
-        }
+    if (prefix.isInProtected)
+      while (!prefix.isFull() && currentProtectedSize < maxProtectedSize) {
+        extendPrefix(prefix);
       }
+    else while (!prefix.isFull() && currentProbationSize < maxProbationSize) {
+      extendPrefix(prefix);
     }
+
+    if (prefix.isFull()) return;
 
     // 2) Possibly evict from other items (the "victim") to free space,
     //    if the new chunk would yield a bigger improvement than the victim's chunk.
     Prefix victim;
     do {
-      victim = findVictim();
+      if (prefix.isInProtected)
+        victim = findVictimFromProtected();
+      else victim = findVictimFromProbation();
       if (victim == null) break;
+
       shrinkPrefix(victim);
       extendPrefix(prefix);
     } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
@@ -195,12 +189,14 @@ public final class GNBSegmentedLruPolicy implements Policy {
     }
     prefix.removeChunk();
     if (prefix.isInProtected) {
-      if (protectedHeap.contains(prefix.itemKey)) protectedHeap.remove(prefix.itemKey);
       currentProtectedSize--;
-      if (prefix.chunksAmount > 0) {
-        if (protectedHeap.contains(prefix.itemKey)) protectedHeap.upsert(prefix.itemKey, prefix);
+
+      if (!prefix.isEmpty()) {
+        // if (protectedHeap.contains(prefix.itemKey))
+        protectedHeap.upsert(prefix.itemKey, prefix);
       } else {
-        prefix.isInProtected = false; // Possibly becomes empty -> no queue?
+        protectedHeap.remove(prefix.itemKey);
+        prefix.isInProtected = false;
       }
     } else {
       currentProbationSize--;
@@ -221,11 +217,9 @@ public final class GNBSegmentedLruPolicy implements Policy {
     prefix.insertChunk();
 
     if (prefix.isInProtected) {
-      if (protectedHeap.contains(prefix.itemKey)) protectedHeap.remove(prefix.itemKey);
       currentProtectedSize++;
       protectedHeap.upsert(prefix.itemKey, prefix);
     } else {
-      if (probationHeap.contains(prefix.itemKey)) probationHeap.remove(prefix.itemKey);
       currentProbationSize++;
       probationHeap.upsert(prefix.itemKey, prefix);
     }
@@ -240,13 +234,13 @@ public final class GNBSegmentedLruPolicy implements Policy {
    * If you want to evict purely based on the minimal LRU score across
    * _both_ queues, you could compare the min of each heap instead.
    */
-  private Prefix findVictim() {
-    if (!probationHeap.isEmpty()) {
-      return probationHeap.min().value();
-    }
-    if (!protectedHeap.isEmpty()) {
-      return protectedHeap.min().value();
-    }
+  private Prefix findVictimFromProtected() {
+    if (!protectedHeap.isEmpty()) return protectedHeap.min().value();
+    return null;
+  }
+
+  private Prefix findVictimFromProbation() {
+    if (!probationHeap.isEmpty()) return probationHeap.min().value();
     return null;
   }
 
