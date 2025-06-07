@@ -65,15 +65,11 @@ public final class GNBArcPolicy implements Policy {
 
     switch (prefix.queue) {
       case T1:
-        if (heapT1.contains(itemKey))
-          recordRequestStatistics(prefix, event.retrievalDelay());
-        else policyStats.addDelay(event.retrievalDelay());
+        recordRequestStatistics(prefix, event.retrievalDelay());
         onHitT1(prefix);
         break;
       case T2:
-        if (heapT2.contains(itemKey))
-          recordRequestStatistics(prefix, event.retrievalDelay());
-        else policyStats.addDelay(event.retrievalDelay());
+        recordRequestStatistics(prefix, event.retrievalDelay());
         onHitT2(prefix);
         break;
       case B1:
