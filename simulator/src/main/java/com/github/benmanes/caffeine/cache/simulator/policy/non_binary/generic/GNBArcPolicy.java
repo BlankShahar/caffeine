@@ -51,6 +51,7 @@ public final class GNBArcPolicy implements Policy {
   public void record(AccessEvent event) {
     policyStats.recordOperation();
     currentTime++;
+    System.out.println(currentTime);
     long itemKey = event.key();
     Prefix prefix = data.get(itemKey);
     if (prefix == null) {
@@ -61,23 +62,27 @@ public final class GNBArcPolicy implements Policy {
       prefix.lastRequestTime = currentTime;
     }
 
-    recordRequestStatistics(prefix, event.retrievalDelay());
     handleRequestsFrequency(prefix);
 
     switch (prefix.queue) {
       case T1:
+        recordRequestStatistics(prefix, event.retrievalDelay());
         onHitT1(prefix);
         break;
       case T2:
+        recordRequestStatistics(prefix, event.retrievalDelay());
         onHitT2(prefix);
         break;
       case B1:
+        policyStats.addDelay(event.retrievalDelay());
         onHitB1(prefix);
         break;
       case B2:
+        policyStats.addDelay(event.retrievalDelay());
         onHitB2(prefix);
         break;
       case NONE:
+        policyStats.addDelay(event.retrievalDelay());
         onMiss(prefix);
         break;
     }
@@ -128,7 +133,6 @@ public final class GNBArcPolicy implements Policy {
       if (heapT1.contains(prefix.itemKey)) heapT1.remove(prefix.itemKey);
       prefix.queue = Q.B1;
       sizeB1 += prefix.chunksAmount;
-      prefix.chunksAmount = 0;
       return;
     }
 
@@ -154,7 +158,6 @@ public final class GNBArcPolicy implements Policy {
       if (heapT2.contains(prefix.itemKey)) heapT2.remove(prefix.itemKey);
       prefix.queue = Q.B2;
       sizeB2 += prefix.chunksAmount;
-      prefix.chunksAmount = 0;
       return;
     }
     waterDraw(Q.T2, prefix.chunksAmount);
@@ -196,10 +199,10 @@ public final class GNBArcPolicy implements Policy {
     Prefix victim;
     do {
       victim = findVictim(prefix.queue);
-      if (victim == null) break;
+      if (victim == null || victim.itemKey == prefix.itemKey) break;
       shrinkPrefix(victim);
       extendPrefix(prefix);
-    } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
+    } while (!prefix.isFull());
   }
 
   private void extendPrefix(Prefix prefix) {
@@ -236,9 +239,11 @@ public final class GNBArcPolicy implements Policy {
     if (prefix.isEmpty()) {
       if (prefix.queue == Q.T1) {
         prefix.queue = Q.B1;
+        sizeT1 -= prefix.chunksAmount;
         sizeB1 += prefix.chunksAmount;
       } else {
         prefix.queue = Q.B2;
+        sizeT2 -= prefix.chunksAmount;
         sizeB2 += prefix.chunksAmount;
       }
     }
@@ -261,7 +266,6 @@ public final class GNBArcPolicy implements Policy {
     else sizeT2 -= victim.chunksAmount;
     sizeResident -= victim.chunksAmount;
 
-    victim.chunksAmount = 0;
     victim.queue = (queue == Q.T1) ? Q.B1 : Q.B2;
     if (victim.queue == Q.B1) sizeB1 += victim.chunksAmount;
     else sizeB2 += victim.chunksAmount;
