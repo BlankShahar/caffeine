@@ -71,7 +71,9 @@ public final class GNBSegmentedLruPolicy implements Policy {
       // We put new items in the probation segment
     } else prefix.lastRequestTime = currentTime;
 
-    recordRequestStatistics(prefix, event.retrievalDelay());
+    if (probationHeap.contains(itemKey) || protectedHeap.contains(itemKey))
+      recordRequestStatistics(prefix, event.retrievalDelay());
+    else policyStats.addDelay(event.retrievalDelay());
     handleRequestsFrequency(prefix);
 
     // On second reference, if not in protected, we attempt promotion
