@@ -51,7 +51,6 @@ public final class GNBArcPolicy implements Policy {
   public void record(AccessEvent event) {
     policyStats.recordOperation();
     currentTime++;
-    System.out.println(currentTime);
     long itemKey = event.key();
     Prefix prefix = data.get(itemKey);
     if (prefix == null) {
