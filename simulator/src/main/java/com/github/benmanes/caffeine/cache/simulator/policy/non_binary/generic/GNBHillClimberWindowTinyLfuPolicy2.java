@@ -153,9 +153,9 @@ public final class GNBHillClimberWindowTinyLfuPolicy2 implements Policy {
     if (spaceNeeded > maxCacheLRU) return;
     while (sizeLRU + spaceNeeded > maxCacheLRU) {
       Prefix victim = heapLRU.min().value();
-//      shrinkPrefixLRU(victim);
-      long evictionSize = Math.min(victim.chunksAmount, spaceNeeded);
-      shrinkPrefixLruBySize(victim, evictionSize);
+      shrinkPrefixLRU(victim);
+//      long evictionSize = Math.min(victim.chunksAmount, spaceNeeded);
+//      shrinkPrefixLruBySize(victim, evictionSize);
     }
   }
 
@@ -163,9 +163,9 @@ public final class GNBHillClimberWindowTinyLfuPolicy2 implements Policy {
     if (spaceNeeded > maxCacheLFU) return;
     while (sizeLFU + spaceNeeded > maxCacheLFU) {
       Prefix victim = heapLFU.min().value();
-//      shrinkPrefixLFU(victim);
-      long evictionSize = Math.min(victim.chunksAmount, spaceNeeded);
-      shrinkPrefixLfuBySize(victim, evictionSize);
+      shrinkPrefixLFU(victim);
+//      long evictionSize = Math.min(victim.chunksAmount, spaceNeeded);
+//      shrinkPrefixLfuBySize(victim, evictionSize);
     }
   }
 
