@@ -18,8 +18,8 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  * cacheLRU  – admission window (recency based)
  * cacheLFU  – main cache (frequency based)
  */
-@Policy.PolicySpec(name = "non-binary.generic.HillClimberWindowTinyLFU")
-public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.HillClimberWindowTinyLFU")
+public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
 
   /* ------------------------------  configuration  ------------------------------ */
   private final int REFINEMENT_INTERVAL; // = 1_000_000;   // operations per hill‑climb step
@@ -51,7 +51,7 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
   /* time */
   private static long now = 0;
 
-  public GNBHillClimberWindowTinyLfuPolicy(Config cfg) {
+  public NBHillClimberWindowTinyLfuPolicy(Config cfg) {
     var settings = new BasicSettings(cfg);
     this.maximumCacheSize = settings.maximumSize();
     this.maxCacheLRU = maximumCacheSize / 2;
@@ -168,6 +168,8 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
     sizeLRU += available_space;
     if (available_space > 0) updateHeap(heapLRU, prefix);
 
+    if (prefix.isFull()) return;
+
     Prefix victim;
     do {
       victim = heapLRU.min().value();
@@ -212,6 +214,8 @@ public final class GNBHillClimberWindowTinyLfuPolicy implements Policy {
 //      maxCacheLFU - sizeLFU
 //    );
 //    extendPrefixLfuBySize(prefix, fillUpSize);
+
+    if (prefix.isFull()) return;
 
     Prefix victim;
     do {

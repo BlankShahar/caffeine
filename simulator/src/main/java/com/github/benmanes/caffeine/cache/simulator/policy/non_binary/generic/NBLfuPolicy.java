@@ -17,8 +17,8 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.generic.LFU")
-public final class GNBLfuPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.LFU")
+public final class NBLfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   final long maximumCacheSize; // in chunks
@@ -28,7 +28,7 @@ public final class GNBLfuPolicy implements Policy {
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
   int currentTime;
 
-  public GNBLfuPolicy(Config config) {
+  public NBLfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -108,6 +108,8 @@ public final class GNBLfuPolicy implements Policy {
       extendPrefix(prefix);
     }
 
+    if (prefix.isFull()) return;
+
     Prefix victim;
     do {
       victim = findVictim();
@@ -133,9 +135,9 @@ public final class GNBLfuPolicy implements Policy {
   }
 
   private void extendPrefix(Prefix prefix) {
-    if (prefix.isFull()) {
+    if (prefix.isFull())
       return;
-    }
+
     prefix.insertChunk();
     currentCacheSize++;
 

@@ -16,8 +16,8 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
-@Policy.PolicySpec(name = "non-binary.generic.Arc")
-public final class GNBArcPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.Arc")
+public final class NBArcPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
@@ -30,7 +30,7 @@ public final class GNBArcPolicy implements Policy {
 
   enum Q {T1, T2, B1, B2, NONE}
 
-  public GNBArcPolicy(Config config) {
+  public NBArcPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -195,6 +195,8 @@ public final class GNBArcPolicy implements Policy {
     while (!prefix.isFull() && currentHeapSize < maximumHeapSize) {
       extendPrefix(prefix);
     }
+    if (prefix.isFull()) return;
+
     Prefix victim;
     do {
       victim = findVictim(prefix.queue);

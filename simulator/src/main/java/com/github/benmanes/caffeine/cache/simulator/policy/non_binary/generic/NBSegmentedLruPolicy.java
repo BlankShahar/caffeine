@@ -16,8 +16,8 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
-@Policy.PolicySpec(name = "non-binary.generic.SegmentedLRU")
-public final class GNBSegmentedLruPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.SegmentedLRU")
+public final class NBSegmentedLruPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
@@ -34,7 +34,7 @@ public final class GNBSegmentedLruPolicy implements Policy {
   final SearchableMinHeap<Long, Prefix> protectedHeap;
   final Source source;
 
-  public GNBSegmentedLruPolicy(Config config) {
+  public NBSegmentedLruPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 

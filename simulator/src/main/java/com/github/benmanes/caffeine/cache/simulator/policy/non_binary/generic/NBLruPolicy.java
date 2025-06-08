@@ -17,42 +17,30 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 
 
-@Policy.PolicySpec(name = "non-binary.generic.Convex")
-public final class GNBConvexPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.LRU")
+public final class NBLruPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
-  static double alpha, maxRecency, maxFrequency;
-  final long REFINEMENT_INTERVAL;
-  final double STEP_SIZE;
-  double q;
-  double previousTotalDelay, currentTotalDelay;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
   final PolicyStats policyStats;
-  final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
+  Source source;
 
-  public GNBConvexPolicy(Config config) {
+  public NBLruPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
     this.data = new Long2ObjectOpenHashMap<>();
     this.requests = new ArrayDeque<>();
+    currentTime = 0;
+
     this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
-    currentTime = 0;
 
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
-    alpha = 0.5;
-    maxRecency = 0;
-    maxFrequency = 0;
-    REFINEMENT_INTERVAL = 1_000_000;
-    STEP_SIZE = 0.05;
-    q = 1;
-    previousTotalDelay = 0;
-    currentTotalDelay = 0;
   }
 
   @Override
@@ -61,7 +49,6 @@ public final class GNBConvexPolicy implements Policy {
     var existingPrefix = data.getOrDefault(itemKey, null);
     policyStats.recordOperation();
     currentTime++;
-
     if (existingPrefix != null) {
       // prefix exist (partial hit)
       existingPrefix.lastRequestTime = currentTime;
@@ -77,48 +64,11 @@ public final class GNBConvexPolicy implements Policy {
   private void onRequest(Prefix prefix, double sourceDelay) {
     recordRequestStatistics(prefix, sourceDelay);
     handleRequestsFrequency(prefix);
-    updateParameters(prefix, sourceDelay);
 
     if (!data.containsKey(prefix.itemKey)) {
       data.put(prefix.itemKey, prefix);
     }
     waterFill(prefix);
-  }
-
-  private void rebuildHeap() {
-    scoreMinHeap.clear();
-    for (long itemKey : data.keySet()) {
-      Prefix prefix = data.get(itemKey);
-      if (prefix.chunksAmount > 0) scoreMinHeap.upsert(itemKey, data.get(itemKey));
-    }
-  }
-
-  private void updateParameters(Prefix prefix, double retrievalDelay) {
-    currentTotalDelay += retrievalDelay;
-    double recency = prefix.recency();
-    double frequency = prefix.frequency();
-
-    if (recency > maxRecency) {
-      maxRecency = recency;
-      rebuildHeap();
-    }
-    if (frequency > maxFrequency) {
-      maxFrequency = frequency;
-      rebuildHeap();
-    }
-
-    if (currentTime % REFINEMENT_INTERVAL == 0) {
-      if (currentTotalDelay < previousTotalDelay) {
-        q += STEP_SIZE;
-      } else {
-        q = Math.max(0, q - STEP_SIZE);
-      }
-      alpha = 1 / Math.pow(2, q);
-      rebuildHeap();
-
-      previousTotalDelay = currentTotalDelay;
-      currentTotalDelay = 0;
-    }
   }
 
   private void handleRequestsFrequency(Prefix prefix) {
@@ -146,14 +96,22 @@ public final class GNBConvexPolicy implements Policy {
     policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
 
     // Total delay
-    double underflowDelay = calculateDelay(sourceDelay, old);
+    double underflowDelay = calculateUnderflowDelay(sourceDelay, old);
     policyStats.addDelay(underflowDelay);
   }
 
   private void waterFill(Prefix prefix) {
+//    long fillUpSize = Math.min(
+//      prefix.fullItemChunksAmount - prefix.chunksAmount,
+//      maximumCacheSize - currentCacheSize
+//    );
+//    extendPrefixBySize(prefix, fillUpSize);
+
     while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
       extendPrefix(prefix);
     }
+
+    if (prefix.isFull()) return;
 
     Prefix victim;
     do {
@@ -195,6 +153,21 @@ public final class GNBConvexPolicy implements Policy {
     policyStats.recordAdmission();
   }
 
+  private void extendPrefixBySize(Prefix prefix, long size) {
+    if (prefix.chunksAmount + size > prefix.fullItemChunksAmount)
+      throw new IllegalArgumentException("Cannot extend prefix #" + prefix.itemKey + " beyond its full size");
+    prefix.chunksAmount += size;
+    currentCacheSize += size;
+
+//    if (scoreMinHeap.contains(prefix.itemKey)) {
+//      scoreMinHeap.remove(prefix.itemKey);
+//    }
+    scoreMinHeap.upsert(prefix.itemKey, prefix);
+
+    policyStats.recordOperation();
+    policyStats.recordAdmission();
+  }
+
   /**
    * @return the victim chunk to be evicted, or null if no suitable one is found
    */
@@ -209,14 +182,19 @@ public final class GNBConvexPolicy implements Policy {
    * @param prefix      the prefix of the item
    * @return the delay in seconds
    */
-  private static double calculateDelay(double sourceDelay, Prefix prefix) {
-    return TimeCalculations.calculateUnderflowDelay(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
+  private static double calculateUnderflowDelay(double sourceDelay, Prefix prefix) {
+    return TimeCalculations.calculateUnderflowDelay(
+      sourceDelay,
+      prefix.fullItemSizeInMB(),
+      prefix.sizeInMB(),
+      Consts.BANDWIDTH
+    );
   }
 
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
     Prefix p1 = data.get(prefixKey1);
     Prefix p2 = data.get(prefixKey2);
-    return p1.convexLrfuCompareTo(p2);
+    return p1.lruCompareTo(p2);
   }
 
   @Override
@@ -250,17 +228,13 @@ public final class GNBConvexPolicy implements Policy {
       this.chunksAmount = 0;
     }
 
-    public double convexLrfuScore() {
+    public double lruScore() {
+      // Idea - recency times the probability of not experiencing delay
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB(),
         Consts.BANDWIDTH
       );
-      return alpha * recency() / maxRecency * (1 - source.calculateCDF(prefixTransmissionTime)) +
-        (1 - alpha) * frequency() / maxFrequency * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double frequency() {
-      return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
+      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public double recency() {
@@ -295,8 +269,8 @@ public final class GNBConvexPolicy implements Policy {
       return chunksAmount == 0;
     }
 
-    public int convexLrfuCompareTo(Prefix other) {
-      return Double.compare(this.convexLrfuScore(), other.convexLrfuScore());
+    public int lruCompareTo(Prefix other) {
+      return Double.compare(this.lruScore(), other.lruScore());
     }
   }
 }

@@ -13,32 +13,25 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
-import java.util.ArrayDeque;
-import java.util.Queue;
-
-
-@Policy.PolicySpec(name = "non-binary.generic.Hyperbolic")
-public final class GNBHyperbolicPolicy implements Policy {
+@Policy.PolicySpec(name = "non-binary.LRFU")
+public final class NBLrfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
-  final Queue<Long> requests;
-  static long currentTime;
+  long currentTime;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
   final PolicyStats policyStats;
-  final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
+  Source source;
 
-  public GNBHyperbolicPolicy(Config config) {
+  public NBLrfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
     this.data = new Long2ObjectOpenHashMap<>();
-    this.requests = new ArrayDeque<>();
     currentTime = 0;
 
     this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
-
 
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
@@ -52,11 +45,9 @@ public final class GNBHyperbolicPolicy implements Policy {
     currentTime++;
 
     if (existingPrefix != null) {
-      // prefix exist (partial hit)
       existingPrefix.lastRequestTime = currentTime;
       onRequest(existingPrefix, event.retrievalDelay());
     } else {
-      // prefix missing (full miss)
       long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
       var newPrefix = new Prefix(itemKey, chunksAmount, source, currentTime);
       onRequest(newPrefix, event.retrievalDelay());
@@ -65,7 +56,7 @@ public final class GNBHyperbolicPolicy implements Policy {
 
   private void onRequest(Prefix prefix, double sourceDelay) {
     recordRequestStatistics(prefix, sourceDelay);
-    handleRequestsFrequency(prefix);
+    prefix.updateScore(currentTime);
 
     if (!data.containsKey(prefix.itemKey)) {
       data.put(prefix.itemKey, prefix);
@@ -73,32 +64,14 @@ public final class GNBHyperbolicPolicy implements Policy {
     waterFill(prefix);
   }
 
-  private void handleRequestsFrequency(Prefix prefix) {
-    prefix.requestsCountInPeriod++;
-
-    requests.add(prefix.itemKey);
-    if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
-      long lastRequestItemKey = requests.remove();
-      var lastRequestedPrefix = data.getOrDefault(lastRequestItemKey, null);
-      policyStats.recordOperation();
-
-      if (lastRequestedPrefix != null) {
-        lastRequestedPrefix.requestsCountInPeriod--;
-      }
-    }
-  }
-
   private void recordRequestStatistics(Prefix old, double sourceDelay) {
-    // The ideal prefix size - the size that gives "no delay"/"all the item is cached" illusion
     double idealSize = Math.min(old.fullItemSizeInMB(), sourceDelay * Consts.BANDWIDTH);
     long idealChunksAmount = (long) Math.ceil(idealSize / Consts.CHUNK_SIZE);
 
-    // Chunk Hit Rate
     policyStats.addHits(old.chunksAmount);
     policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
 
-    // Total delay
-    double underflowDelay = calculateDelay(sourceDelay, old);
+    double underflowDelay = calculateUnderflowDelay(sourceDelay, old);
     policyStats.addDelay(underflowDelay);
   }
 
@@ -106,6 +79,7 @@ public final class GNBHyperbolicPolicy implements Policy {
     while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
       extendPrefix(prefix);
     }
+    if (prefix.isFull()) return;
 
     Prefix victim;
     do {
@@ -147,21 +121,11 @@ public final class GNBHyperbolicPolicy implements Policy {
     policyStats.recordAdmission();
   }
 
-  /**
-   * @return the victim chunk to be evicted, or null if no suitable one is found
-   */
   private Prefix findVictim() {
     return scoreMinHeap.min().value();
   }
 
-  /**
-   * Calculate the delay of fetching a partial cached object
-   *
-   * @param sourceDelay in seconds
-   * @param prefix      the prefix of the item
-   * @return the delay in seconds
-   */
-  private static double calculateDelay(double sourceDelay, Prefix prefix) {
+  private static double calculateUnderflowDelay(double sourceDelay, Prefix prefix) {
     return TimeCalculations.calculateUnderflowDelay(
       sourceDelay,
       prefix.fullItemSizeInMB(),
@@ -173,7 +137,7 @@ public final class GNBHyperbolicPolicy implements Policy {
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
     Prefix p1 = data.get(prefixKey1);
     Prefix p2 = data.get(prefixKey2);
-    return p1.hyperbolicCompareTo(p2);
+    return p1.lrfuCompareTo(p2);
   }
 
   @Override
@@ -195,33 +159,31 @@ public final class GNBHyperbolicPolicy implements Policy {
     final long itemKey, fullItemChunksAmount;
     final Source source;
     long chunksAmount;
-    long requestsCountInPeriod;
     long lastRequestTime;
+
+    double score;
+    static final double LAMBDA = 2.0;
 
     public Prefix(long itemKey, long fullItemChunksAmount, Source source, long currentTime) {
       this.itemKey = itemKey;
       this.fullItemChunksAmount = fullItemChunksAmount;
       this.source = source;
-      this.requestsCountInPeriod = 0;
       this.lastRequestTime = currentTime;
       this.chunksAmount = 0;
+      this.score = 0;
     }
 
-    public double hyperbolicScore() {
-      // Idea - frequency times recency times the probability of not experiencing delay
+    public void updateScore(long currentTime) {
+      double decay = Math.pow(0.5, (currentTime - lastRequestTime) / LAMBDA);
+      score = score * decay + 1;
+    }
+
+    public double lrfuScore() {
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
         sizeInMB(),
         Consts.BANDWIDTH
       );
-      return frequency() * recency() * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double frequency() {
-      return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
-    }
-
-    public double recency() {
-      return (double) 1 / (currentTime - lastRequestTime + 1);
+      return score * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public void insertChunk() {
@@ -252,8 +214,8 @@ public final class GNBHyperbolicPolicy implements Policy {
       return chunksAmount == 0;
     }
 
-    public int hyperbolicCompareTo(Prefix other) {
-      return Double.compare(this.hyperbolicScore(), other.hyperbolicScore());
+    public int lrfuCompareTo(Prefix other) {
+      return Double.compare(this.lrfuScore(), other.lrfuScore());
     }
   }
 }

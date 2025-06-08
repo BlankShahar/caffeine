@@ -164,6 +164,8 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
       extendPrefixSecondCache(prefix);
     }
 
+    if (prefix.isFull()) return;
+
     while (true) {
       if (firstCacheSize == 0) { // If there's only a second cache, act as regular non-binary
         Prefix victim = findSecondCacheVictim();
