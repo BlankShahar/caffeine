@@ -16,8 +16,11 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
+import static com.google.common.base.Preconditions.checkState;
+
+
 @Policy.PolicySpec(name = "non-binary.Arc")
-public final class NBArcPolicy implements Policy {
+public final class NBArcPolicy1 implements Policy {
   final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
@@ -31,7 +34,7 @@ public final class NBArcPolicy implements Policy {
 
   enum Q {T1, T2, B1, B2, NONE}
 
-  public NBArcPolicy(Config config) {
+  public NBArcPolicy1(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
@@ -53,6 +56,7 @@ public final class NBArcPolicy implements Policy {
   public void record(AccessEvent event) {
     policyStats.recordOperation();
     currentTime++;
+    System.out.println(currentTime);
     long itemKey = event.key();
     Prefix prefix = data.get(itemKey);
     if (prefix == null) {
@@ -101,21 +105,31 @@ public final class NBArcPolicy implements Policy {
   }
 
   private void onHitB1(Prefix prefix) {
-    p = Math.min(maximumCacheSize, p + prefix.chunksAmount);
-    long maxSizeT2 = maximumCacheSize - sizeT1;
-    if (prefix.chunksAmount > maxSizeT2) return;
+    p = Math.min(maximumCacheSize, p + Math.max(1, sizeB2 / Math.max(1, sizeB1)));
 
-    waterDraw(Q.T2, prefix.chunksAmount);
+    if (sizeResident >= maximumCacheSize) {
+      if ((sizeT1 >= 1) && (sizeT1 > p)) {
+        evictResident(Q.T1);
+      } else {
+        evictResident(Q.T2);
+      }
+    }
+
+    sizeB1 -= prefix.chunksAmount;
     moveToT2(prefix);
     waterFill(prefix);
   }
 
   private void onHitB2(Prefix prefix) {
-    p = Math.max(0, p - prefix.chunksAmount);
-    long maxSizeT2 = maximumCacheSize - sizeT1;
-    if (prefix.chunksAmount > maxSizeT2) return;
+    p = Math.max(0, p - Math.max(1, sizeB1 / Math.max(1, sizeB2)));
 
-    waterDraw(Q.T2, prefix.chunksAmount);
+    if ((sizeT1 >= 1) && ((sizeT1 > p) || (sizeT1 == p))) {
+      evictResident(Q.T1);
+    } else {
+      evictResident(Q.T2);
+    }
+
+    sizeB2 -= prefix.chunksAmount;
     moveToT2(prefix);
     waterFill(prefix);
   }
@@ -125,10 +139,22 @@ public final class NBArcPolicy implements Policy {
     long L2 = sizeT2 + sizeB2;
 
     if (L1 == maximumCacheSize) {
-      if (sizeT1 < maximumCacheSize) evictGhost(Q.B1);
-      else evictResident(Q.T1);
-    } else if (L1 < maximumCacheSize && L1 + L2 >= maximumCacheSize) {
-      if (L1 + L2 >= 2 * maximumCacheSize) evictGhost(Q.B2);
+      if (sizeT1 < maximumCacheSize) {
+        evictGhost(Q.B1);
+      } else {
+        evictResident(Q.T1);
+      }
+    } else if ((L1 < maximumCacheSize) && ((L1 + L2) >= maximumCacheSize)) {
+      if ((L1 + L2) >= 2 * maximumCacheSize) {
+        evictGhost(Q.B2);
+      }
+      if (sizeResident >= maximumCacheSize) {
+        if ((sizeT1 >= 1) && (sizeT1 > p)) {
+          evictResident(Q.T1);
+        } else {
+          evictResident(Q.T2);
+        }
+      }
     }
 
     moveToT1(prefix);
@@ -136,55 +162,49 @@ public final class NBArcPolicy implements Policy {
   }
 
   private void moveToT1(Prefix prefix) {
-    // Ensure space in T1 before admitting
-    long maxSizeT1 = maximumCacheSize - sizeT2;
-    if (prefix.chunksAmount > maxSizeT1) {
-      if (heapT1.contains(prefix.itemKey)) heapT1.remove(prefix.itemKey);
+    long available = maximumCacheSize - sizeT2;
+    if (prefix.fullItemChunksAmount > available) {
       prefix.queue = Q.B1;
-      sizeB1 += prefix.chunksAmount;
       prefix.chunksAmount = 0;
+      sizeB1 += prefix.fullItemChunksAmount;
       return;
     }
 
-    waterDraw(Q.T1, prefix.chunksAmount);
+
     if (prefix.queue == Q.T2) {
-      if (heapT2.contains(prefix.itemKey)) heapT2.remove(prefix.itemKey);
+      waterDraw(Q.T1, prefix.chunksAmount);
+      heapT2.remove(prefix.itemKey);
       sizeT2 -= prefix.chunksAmount;
     } else if (prefix.queue == Q.B1) sizeB1 -= prefix.chunksAmount;
     else if (prefix.queue == Q.B2) sizeB2 -= prefix.chunksAmount;
 
+    if (prefix.queue == Q.NONE || prefix.queue == Q.B1 || prefix.queue == Q.B2)
+      prefix.chunksAmount = 0;
     prefix.queue = Q.T1;
-    sizeT1 += prefix.chunksAmount;
-    if (!prefix.isEmpty()) {
-//      if (heapT1.contains(prefix.itemKey)) heapT1.remove(prefix.itemKey);
-      heapT1.upsert(prefix.itemKey, prefix);
-    }
+    heapT1.upsert(prefix.itemKey, prefix);
   }
 
   private void moveToT2(Prefix prefix) {
-    // Ensure space in T2 before admitting
-    long maxSizeT2 = maximumCacheSize - sizeT1;
-    if (prefix.chunksAmount > maxSizeT2) {
-      if (heapT2.contains(prefix.itemKey)) heapT2.remove(prefix.itemKey);
+    long available = maximumCacheSize - sizeT1;
+    if (prefix.fullItemChunksAmount > available) {
       prefix.queue = Q.B2;
-      sizeB2 += prefix.chunksAmount;
       prefix.chunksAmount = 0;
+      sizeB2 += prefix.fullItemChunksAmount;
       return;
     }
 
-    waterDraw(Q.T2, prefix.chunksAmount);
+
     if (prefix.queue == Q.T1) {
-      if (heapT1.contains(prefix.itemKey)) heapT1.remove(prefix.itemKey);
+      waterDraw(Q.T2, prefix.chunksAmount);
+      heapT1.remove(prefix.itemKey);
       sizeT1 -= prefix.chunksAmount;
     } else if (prefix.queue == Q.B1) sizeB1 -= prefix.chunksAmount;
     else if (prefix.queue == Q.B2) sizeB2 -= prefix.chunksAmount;
 
+    if (prefix.queue == Q.NONE || prefix.queue == Q.B1 || prefix.queue == Q.B2)
+      prefix.chunksAmount = 0;
     prefix.queue = Q.T2;
-    sizeT2 += prefix.chunksAmount;
-    if (!prefix.isEmpty()) {
-//      if (heapT2.contains(prefix.itemKey)) heapT2.remove(prefix.itemKey);
-      heapT2.upsert(prefix.itemKey, prefix);
-    }
+    heapT2.upsert(prefix.itemKey, prefix);
   }
 
   private void waterDraw(Q queue, long spaceNeeded) {
@@ -325,6 +345,19 @@ public final class NBArcPolicy implements Policy {
   @Override
   public void finished() {
     Policy.super.finished();
+    checkState(sizeT1 + sizeT2 <= maximumCacheSize, "resident size overflow");
+    checkState(sizeB1 + sizeB2 <= maximumCacheSize, "ghost size overflow");
+
+    long countedT1 = data.values().stream().filter(p -> p.queue == Q.T1).mapToLong(p -> p.chunksAmount).sum();
+    long countedT2 = data.values().stream().filter(p -> p.queue == Q.T2).mapToLong(p -> p.chunksAmount).sum();
+    checkState(countedT1 == sizeT1, "T1 mismatch");
+    checkState(countedT2 == sizeT2, "T2 mismatch");
+
+    long countedB1 = data.values().stream().filter(p -> p.queue == Q.B1).mapToLong(p -> p.fullItemChunksAmount).sum();
+    long countedB2 = data.values().stream().filter(p -> p.queue == Q.B2).mapToLong(p -> p.fullItemChunksAmount).sum();
+    checkState(countedB1 == sizeB1, "B1 mismatch");
+    checkState(countedB2 == sizeB2, "B2 mismatch");
+
     System.out.println("Non-Binary ARC Hits: " + hits);
   }
 
