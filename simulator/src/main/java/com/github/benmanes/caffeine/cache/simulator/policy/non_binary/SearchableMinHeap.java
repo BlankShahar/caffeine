@@ -25,7 +25,7 @@ import java.util.*;
 public class SearchableMinHeap<K, V> {
   final private static float DEFAULT_LOAD_FACTOR = 1.5f;
   protected K[] heap;
-  protected Map<K, V> valuesMap;
+  public Map<K, V> valuesMap;
   protected Map<K, Integer> idxMap;
   public int size;
   protected int maxSize;
