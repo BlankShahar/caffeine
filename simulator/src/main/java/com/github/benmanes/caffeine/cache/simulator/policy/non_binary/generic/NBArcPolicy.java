@@ -131,7 +131,7 @@ public final class NBArcPolicy implements Policy {
     moveToT2(prefix);
     if (prefix.queue == Q.T2) // Move to T2 can result in moving to B2 in case the prefix is too large
       waterFill(prefix);
-    p = Math.min(maximumCacheSize, p + Math.max(sizeB2 / sizeB1, 1));
+    p = Math.min(maximumCacheSize, p + Math.max(sizeB2 / Math.max(sizeB1, 1), 1));
     evict();
   }
 
@@ -143,7 +143,7 @@ public final class NBArcPolicy implements Policy {
     moveToT2(prefix);
     if (prefix.queue == Q.T2) // Move to T2 can result in moving to B2 in case the prefix is too large
       waterFill(prefix);
-    p = Math.max(0, p - Math.max(sizeB1 / sizeB2, 1));
+    p = Math.max(0, p - Math.max(sizeB1 / Math.max(sizeB2, 1), 1));
     evict();
   }
 
