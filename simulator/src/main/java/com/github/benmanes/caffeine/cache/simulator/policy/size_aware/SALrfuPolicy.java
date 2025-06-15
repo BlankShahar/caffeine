@@ -44,8 +44,7 @@ public final class SALrfuPolicy implements Policy {
       data.put(event.key(), node);
     }
     if (!heap.contains(node.key)) {
-      double delay = TimeCalculations.calculateUnderflowDelay(event.retrievalDelay(), node.sizeInMB(), node.cachedInMB(), Consts.BANDWIDTH);
-      stats.addDelay(delay);
+      stats.addDelay(event.retrievalDelay());
     }
 
     updateScore(node);
