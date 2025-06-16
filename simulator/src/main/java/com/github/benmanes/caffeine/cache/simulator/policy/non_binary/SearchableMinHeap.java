@@ -289,7 +289,7 @@ public class SearchableMinHeap<K, V> {
     while (i != 0 && !isWellPositioned) {
       parentIdx = (i - 1) >>> 1;
       parentKey = heap[parentIdx];
-      isWellPositioned = c.compare(parentKey, target) <= 0;
+      isWellPositioned = c.compare(parentKey, target) < 0;
 
       if (!isWellPositioned) {
         this.idxMap.put(parentKey, i);
