@@ -4,11 +4,13 @@ import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 import static com.google.common.base.Preconditions.checkState;
 
 @Policy.PolicySpec(name = "size-aware.Arc")
@@ -46,7 +48,7 @@ public final class SAArcPolicy implements Policy {
     }
 
     if (n.q == Q.T1 || n.q == Q.T2) {
-      onHit(n);
+      onHit(n, e);
     } else if (n.q == Q.B1) {
       onHitB1(n, e);
     } else if (n.q == Q.B2) {
@@ -54,7 +56,7 @@ public final class SAArcPolicy implements Policy {
     }
   }
 
-  private void onHit(Node n) {
+  private void onHit(Node n, AccessEvent e) {
     if (n.q == Q.T1) {
       sizeT1 -= n.size;
       sizeT2 += n.size;
@@ -64,11 +66,20 @@ public final class SAArcPolicy implements Policy {
     n.appendToTail(headT2);
 
     stats.recordHit();
+    double latency = calculateLatency(
+      e.retrievalDelay(),
+      e.itemSize() * Consts.CHUNK_SIZE,
+      e.itemSize() * Consts.CHUNK_SIZE,
+      Consts.BANDWIDTH
+    );
+    stats.addLatency(latency);
   }
 
   private void onHitB1(Node n, AccessEvent e) {
     stats.recordMiss();
     stats.addDelay(e.retrievalDelay());
+    double latency = calculateLatency(e.retrievalDelay(), e.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
+    stats.addLatency(latency);
 
     p = Math.min(maximumCacheSize, p + n.size);
     if (n.size <= (maximumCacheSize - sizeT1)) {
@@ -82,6 +93,8 @@ public final class SAArcPolicy implements Policy {
   private void onHitB2(Node n, AccessEvent e) {
     stats.recordMiss();
     stats.addDelay(e.retrievalDelay());
+    double latency = calculateLatency(e.retrievalDelay(), e.itemSize() * Consts.CHUNK_SIZE,0, Consts.BANDWIDTH);
+    stats.addLatency(latency);
 
     p = Math.max(0, p - n.size);
     if (n.size <= (maximumCacheSize - sizeT1)) {
@@ -105,6 +118,9 @@ public final class SAArcPolicy implements Policy {
     long size = event.itemSize(); // (long) Math.ceil(e.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
     stats.recordMiss();
     stats.addDelay(event.retrievalDelay());
+
+    double latency = calculateLatency(event.retrievalDelay(), event.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
+    stats.addLatency(latency);
 
     if (size > maximumCacheSize) {
       return;

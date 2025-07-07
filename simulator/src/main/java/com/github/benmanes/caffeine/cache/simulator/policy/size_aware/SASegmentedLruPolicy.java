@@ -4,9 +4,12 @@ import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+
+import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
 @Policy.PolicySpec(name = "size-aware.SegmentedLRU")
 public final class SASegmentedLruPolicy implements Policy {
@@ -57,8 +60,24 @@ public final class SASegmentedLruPolicy implements Policy {
     if (node == null) {
       long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
       onMiss(event.key(), event.retrievalDelay(), chunksAmount);
+      double latency = calculateLatency(
+        event.retrievalDelay(),
+        event.itemSize() * Consts.CHUNK_SIZE,
+        0,
+        Consts.BANDWIDTH
+      );
+      policyStats.addLatency(latency);
+
     } else {
       onHit(node);
+      double latency = calculateLatency(
+        event.retrievalDelay(),
+        event.itemSize() * Consts.CHUNK_SIZE,
+        event.itemSize() * Consts.CHUNK_SIZE,
+        Consts.BANDWIDTH
+      );
+      policyStats.addLatency(latency);
+
     }
   }
 

@@ -13,6 +13,8 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
+
 /**
  * Non‑binary Hill‑Climber Window‑TinyLFU.
  * cacheLRU  – admission window (recency based)
@@ -326,6 +328,8 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     stats.addHits(p.chunksAmount);
     stats.addMisses(Math.max(0, idealChunks - p.chunksAmount));
     stats.addDelay(TimeCalculations.calculateUnderflowDelay(srcDelay, p.fullSizeInMB(), p.sizeInMB(), Consts.BANDWIDTH));
+    double latency = calculateLatency(srcDelay, p.fullSizeInMB(), p.sizeInMB(), Consts.BANDWIDTH);
+    stats.addLatency(latency);
   }
 
   private void updateHeap(SearchableMinHeap<Long, Prefix> heap, Prefix prefix) {

@@ -4,9 +4,12 @@ import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+
+import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
 @Policy.PolicySpec(name = "size-aware.Hyperbolic")
 public final class SAHyperbolicPolicy implements Policy {
@@ -43,10 +46,24 @@ public final class SAHyperbolicPolicy implements Policy {
       item.frequency++;
       item.lastAccessTime = currentTime;
       minHeap.upsert(itemKey, item);
+      double latency = calculateLatency(
+        event.retrievalDelay(),
+        event.itemSize() * Consts.CHUNK_SIZE,
+        event.itemSize() * Consts.CHUNK_SIZE,
+        Consts.BANDWIDTH
+      );
+      policyStats.addLatency(latency);
     } else {
       // Miss
       policyStats.recordMiss();
       policyStats.addDelay(retrievalDelay);
+      double latency = calculateLatency(
+        event.retrievalDelay(),
+        event.itemSize() * Consts.CHUNK_SIZE,
+        0,
+        Consts.BANDWIDTH
+      );
+      policyStats.addLatency(latency);
 
       if (itemSize > maximumCacheSize) {
         return; // Item is too large to fit the cache

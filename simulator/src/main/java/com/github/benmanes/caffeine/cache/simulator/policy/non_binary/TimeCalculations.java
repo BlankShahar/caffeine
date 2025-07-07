@@ -25,4 +25,9 @@ public final class TimeCalculations {
   public static double calculateTransmissionTime(double size, long bandwidth) {
     return size / bandwidth;
   }
+
+  public static double calculateLatency(double sourceDelay, double itemSize, double prefixSize, long bandwidth) {
+    return calculateUnderflowDelay(sourceDelay, itemSize, prefixSize, bandwidth) +
+      calculateTransmissionTime(itemSize, bandwidth);
+  }
 }

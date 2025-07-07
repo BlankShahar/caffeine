@@ -16,6 +16,8 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
+
 
 @Policy.PolicySpec(name = "non-binary.LRU")
 public final class NBLruPolicy implements Policy {
@@ -98,6 +100,8 @@ public final class NBLruPolicy implements Policy {
     // Total delay
     double underflowDelay = calculateUnderflowDelay(sourceDelay, old);
     policyStats.addDelay(underflowDelay);
+    double latency = calculateLatency(sourceDelay, old.fullItemSizeInMB(), old.sizeInMB(), Consts.BANDWIDTH);
+    policyStats.addLatency(latency);
   }
 
   private void waterFill(Prefix prefix) {

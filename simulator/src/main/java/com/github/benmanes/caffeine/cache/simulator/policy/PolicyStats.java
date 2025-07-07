@@ -60,6 +60,7 @@ public class PolicyStats {
   private long operationCount;
   private double percentAdaption;
   private double totalDelay;
+  private double totalLatency;
 
   @SuppressWarnings({"AnnotateFormatMethod", "this-escape"})
   public PolicyStats(String format, Object... args) {
@@ -101,6 +102,7 @@ public class PolicyStats {
     addMetric("Steps", this::operationCount);
     addMetric("Time", this::stopwatch);
     addMetric("Total Delay", this::totalDelay);
+    addMetric("Total Latency", this::totalLatency);
   }
 
   public Map<String, Metric> metrics() {
@@ -163,6 +165,10 @@ public class PolicyStats {
 
   public void addDelay(double delay) {
     totalDelay += delay;
+  }
+
+  public void addLatency(double latency) {
+    totalLatency += latency;
   }
 
   public void recordWeightedHit(int weight) {
@@ -308,6 +314,10 @@ public class PolicyStats {
 
   public double totalDelay() {
     return totalDelay;
+  }
+
+  public double totalLatency() {
+    return totalLatency;
   }
 
   @Override

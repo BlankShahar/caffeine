@@ -16,6 +16,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 import static com.google.common.base.Preconditions.checkState;
 
 
@@ -85,6 +86,8 @@ public final class NBArcPolicy implements Policy {
 //      heapT2.valuesMap.values().stream().mapToLong(p -> p.chunksAmount).sum() != sizeT2)
 //      System.out.println("Size mismatch: " + currentTime);
 
+    double latency;
+    System.out.println(currentTime);
     switch (prefix.queue) {
       case T1:
         recordRequestStatistics(prefix, event.retrievalDelay());
@@ -96,14 +99,20 @@ public final class NBArcPolicy implements Policy {
         break;
       case B1:
         policyStats.addDelay(event.retrievalDelay());
+        latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
+        policyStats.addLatency(latency);
         onHitB1(prefix);
         break;
       case B2:
         policyStats.addDelay(event.retrievalDelay());
+        latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
+        policyStats.addLatency(latency);
         onHitB2(prefix);
         break;
       case NONE:
         policyStats.addDelay(event.retrievalDelay());
+        latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
+        policyStats.addLatency(latency);
         onMiss(prefix);
         break;
     }
@@ -324,6 +333,8 @@ public final class NBArcPolicy implements Policy {
 
     double underflow = TimeCalculations.calculateUnderflowDelay(delay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
     policyStats.addDelay(underflow);
+    double latency = calculateLatency(delay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
+    policyStats.addLatency(latency);
   }
 
   public int comparePrefixes(long k1, long k2) {

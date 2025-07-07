@@ -16,6 +16,8 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
+
 @Policy.PolicySpec(name = "non-binary.SegmentedLRU")
 public final class NBSegmentedLruPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
@@ -73,7 +75,11 @@ public final class NBSegmentedLruPolicy implements Policy {
 
     if (probationHeap.contains(itemKey) || protectedHeap.contains(itemKey))
       recordRequestStatistics(prefix, event.retrievalDelay());
-    else policyStats.addDelay(event.retrievalDelay());
+    else {
+      policyStats.addDelay(event.retrievalDelay());
+      double latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
+      policyStats.addLatency(latency);
+    }
     handleRequestsFrequency(prefix);
 
     // On second reference, if not in protected, we attempt promotion
@@ -149,6 +155,8 @@ public final class NBSegmentedLruPolicy implements Policy {
       Consts.BANDWIDTH
     );
     policyStats.addDelay(underflowDelay);
+    double latency = calculateLatency(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
+    policyStats.addLatency(latency);
   }
 
   /**

@@ -11,6 +11,8 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
+
 @Policy.PolicySpec(name = "size-aware.LRFU")
 public final class SALrfuPolicy implements Policy {
   private static final double LAMBDA = 2.0; // Decay rate in time units
@@ -45,6 +47,21 @@ public final class SALrfuPolicy implements Policy {
     }
     if (!heap.contains(node.key)) {
       stats.addDelay(event.retrievalDelay());
+      double latency = calculateLatency(
+        event.retrievalDelay(),
+        event.itemSize() * Consts.CHUNK_SIZE,
+        0,
+        Consts.BANDWIDTH
+      );
+      stats.addLatency(latency);
+    }else{
+      double latency = calculateLatency(
+        event.retrievalDelay(),
+        event.itemSize() * Consts.CHUNK_SIZE,
+        event.itemSize() * Consts.CHUNK_SIZE,
+        Consts.BANDWIDTH
+      );
+      stats.addLatency(latency);
     }
 
     updateScore(node);

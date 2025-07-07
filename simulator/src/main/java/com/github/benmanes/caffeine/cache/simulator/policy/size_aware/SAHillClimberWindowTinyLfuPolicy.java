@@ -20,6 +20,7 @@ import com.github.benmanes.caffeine.cache.simulator.admission.countmin4.Periodic
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimber;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimber.Adaptation;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimber.QueueType;
@@ -30,6 +31,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 import static com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimber.Adaptation.Type.DECREASE_WINDOW;
 import static com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimber.Adaptation.Type.INCREASE_WINDOW;
 import static com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimber.QueueType.*;
@@ -113,9 +115,13 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
       onMiss(key, weight);
       policyStats.recordWeightedMiss(weight);
       policyStats.addDelay(event.retrievalDelay());
+      double latency = calculateLatency(event.retrievalDelay(), event.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
+      policyStats.addLatency(latency);
     } else {
       queue = node.queue;
       policyStats.recordWeightedHit(weight);
+      double latency = calculateLatency(event.retrievalDelay(), event.itemSize() * Consts.CHUNK_SIZE, event.itemSize() * Consts.CHUNK_SIZE, Consts.BANDWIDTH);
+      policyStats.addLatency(latency);
       if (queue == WINDOW) {
         onWindowHit(node);
       } else if (queue == PROBATION) {

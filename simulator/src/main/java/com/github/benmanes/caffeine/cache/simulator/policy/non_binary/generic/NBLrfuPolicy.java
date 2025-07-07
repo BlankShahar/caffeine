@@ -13,6 +13,8 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
+
 @Policy.PolicySpec(name = "non-binary.LRFU")
 public final class NBLrfuPolicy implements Policy {
   final Long2ObjectMap<Prefix> data;
@@ -73,6 +75,8 @@ public final class NBLrfuPolicy implements Policy {
 
     double underflowDelay = calculateUnderflowDelay(sourceDelay, old);
     policyStats.addDelay(underflowDelay);
+    double latency = calculateLatency(sourceDelay, old.fullItemSizeInMB(), old.sizeInMB(), Consts.BANDWIDTH);
+    policyStats.addLatency(latency);
   }
 
   private void waterFill(Prefix prefix) {
