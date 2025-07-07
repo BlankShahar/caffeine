@@ -87,7 +87,7 @@ public final class NBArcPolicy implements Policy {
 //      System.out.println("Size mismatch: " + currentTime);
 
     double latency;
-    System.out.println(currentTime);
+    // System.out.println(currentTime);
     switch (prefix.queue) {
       case T1:
         recordRequestStatistics(prefix, event.retrievalDelay());
