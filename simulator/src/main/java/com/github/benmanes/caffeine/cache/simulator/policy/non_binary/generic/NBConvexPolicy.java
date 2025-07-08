@@ -7,6 +7,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.SearchableMinHeap;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.LogNormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
@@ -42,7 +43,7 @@ public final class NBConvexPolicy implements Policy {
     this.data = new Long2ObjectOpenHashMap<>();
     this.requests = new ArrayDeque<>();
     this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
-    this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
+    this.source = new LogNormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
     currentTime = 0;
 
     this.maximumCacheSize = settings.maximumSize();

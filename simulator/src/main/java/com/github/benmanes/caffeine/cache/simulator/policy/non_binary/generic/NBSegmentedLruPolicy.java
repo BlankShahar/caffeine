@@ -7,6 +7,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.SearchableMinHeap;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.LogNormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
@@ -54,7 +55,7 @@ public final class NBSegmentedLruPolicy implements Policy {
     this.probationHeap = new SearchableMinHeap<>((int) maxProbationSize, this::compareProbation);
     this.protectedHeap = new SearchableMinHeap<>((int) maxProtectedSize, this::compareProtected);
 
-    this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
+    this.source = new LogNormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
   }
 
   @Override

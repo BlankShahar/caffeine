@@ -38,6 +38,7 @@ public final class SALruPolicy implements Policy {
 
     policyStats.recordOperation();
     currentTime++;
+    System.out.println(currentTime);
 
     Item item = data.get(itemKey);
     if (item != null) {

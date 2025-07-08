@@ -4,10 +4,10 @@ import java.util.HashMap;
 import java.util.Random;
 
 public class NormalSource extends Source {
-  private Random random;
-  private final double mean, standardDeviation; // in ms
-  private final HashMap<Double, Double> zTable;
-  private final HashMap<Double, Double> resultsCache;
+  protected Random random;
+  protected final double mean, standardDeviation; // in ms
+  protected final HashMap<Double, Double> zTable;
+  protected final HashMap<Double, Double> resultsCache;
 
   public NormalSource(long id, double mean, double standardDeviation) {
     super(id);
@@ -444,7 +444,7 @@ public class NormalSource extends Source {
     return result;
   }
 
-  private double phi(double x) {
+  protected double phi(double x) {
     if (x < 0) {
       return 1 - zTable.get(-1 * x);
     }
