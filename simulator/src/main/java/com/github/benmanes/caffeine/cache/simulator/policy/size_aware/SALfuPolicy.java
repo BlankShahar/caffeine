@@ -68,12 +68,15 @@ public final class SALfuPolicy implements Policy {
       }
 
       // Evict items until there's enough space
+      int iterations=0;
       while (currentCacheSize + itemSize > maximumCacheSize && !minHeap.isEmpty()) {
         Item victim = minHeap.extractMin().value();
         data.remove(victim.key);
         currentCacheSize -= victim.size;
         policyStats.recordEviction();
+        iterations++;
       }
+      System.out.println("Iterations: " + iterations);
 
       // Insert new item
       Item newItem = new Item(itemKey, itemSize);
