@@ -8,13 +8,11 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.SearchableMinHeap;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.LogNormalSource;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import java.util.ArrayDeque;
+import java.util.Objects;
 import java.util.Queue;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
@@ -23,7 +21,6 @@ import static com.google.common.base.Preconditions.checkState;
 
 @Policy.PolicySpec(name = "non-binary.Arc")
 public final class NBArcPolicy implements Policy {
-  final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
   final long maximumCacheSize;
@@ -39,7 +36,6 @@ public final class NBArcPolicy implements Policy {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
-    this.data = new Long2ObjectOpenHashMap<>();
     this.requests = new ArrayDeque<>();
     currentTime = 0;
 
@@ -57,11 +53,10 @@ public final class NBArcPolicy implements Policy {
     policyStats.recordOperation();
     currentTime++;
     long itemKey = event.key();
-    Prefix prefix = data.get(itemKey);
+    Prefix prefix = Objects.requireNonNullElse(heapT1.get(itemKey), heapT2.get(itemKey));
     if (prefix == null) {
       long chunksAmount = event.itemSize();
       prefix = new Prefix(itemKey, chunksAmount, source, currentTime);
-      data.put(itemKey, prefix);
     } else {
       prefix.lastRequestTime = currentTime;
     }
@@ -320,7 +315,7 @@ public final class NBArcPolicy implements Policy {
     requests.add(prefix.itemKey);
     if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
       long last = requests.remove();
-      Prefix lastPrefix = data.get(last);
+      Prefix lastPrefix = Objects.requireNonNullElse(heapT1.get(last), heapT2.get(last));
       if (lastPrefix != null) lastPrefix.requestsCountInPeriod--;
     }
   }
@@ -339,7 +334,9 @@ public final class NBArcPolicy implements Policy {
   }
 
   public int comparePrefixes(long k1, long k2) {
-    return data.get(k1).lruCompareTo(data.get(k2));
+    Prefix p1 = Objects.requireNonNullElse(heapT1.get(k1), heapT2.get(k1));
+    Prefix p2 = Objects.requireNonNullElse(heapT1.get(k2), heapT2.get(k2));
+    return p1.lruCompareTo(p2);
   }
 
   @Override

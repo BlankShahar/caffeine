@@ -6,8 +6,6 @@ import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.typesafe.config.Config;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
@@ -15,7 +13,6 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Tim
 @Policy.PolicySpec(name = "size-aware.LFU")
 public final class SALfuPolicy implements Policy {
   final PolicyStats policyStats;
-  final Long2ObjectMap<Item> data;
   final SearchableMinHeap<Long, Item> minHeap;
   final long maximumCacheSize;
   long currentCacheSize;
@@ -23,7 +20,6 @@ public final class SALfuPolicy implements Policy {
   public SALfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
-    this.data = new Long2ObjectOpenHashMap<>();
     this.minHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::compareItems);
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
@@ -37,7 +33,7 @@ public final class SALfuPolicy implements Policy {
 
     policyStats.recordOperation();
 
-    Item item = data.get(itemKey);
+    Item item = minHeap.get(itemKey);
     if (item != null) {
       // Hit
       policyStats.recordHit();
@@ -70,14 +66,12 @@ public final class SALfuPolicy implements Policy {
       // Evict items until there's enough space
       while (currentCacheSize + itemSize > maximumCacheSize && !minHeap.isEmpty()) {
         Item victim = minHeap.extractMin().value();
-        data.remove(victim.key);
         currentCacheSize -= victim.size;
         policyStats.recordEviction();
       }
 
       // Insert new item
       Item newItem = new Item(itemKey, itemSize);
-      data.put(itemKey, newItem);
       minHeap.upsert(itemKey, newItem);
       currentCacheSize += itemSize;
       policyStats.recordAdmission();
@@ -85,8 +79,9 @@ public final class SALfuPolicy implements Policy {
   }
 
   public int compareItems(long itemKey1, long itemKey2) {
-    Item p1 = data.get(itemKey1);
-    Item p2 = data.get(itemKey2);
+    Item p1 = minHeap.get(itemKey1);
+    Item p2 = minHeap.get(itemKey2);
+    assert p1 != null && p2 != null;
     return Long.compare(p1.frequency, p2.frequency);
   }
 

@@ -5,11 +5,8 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
@@ -17,7 +14,6 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Tim
 public final class SALrfuPolicy implements Policy {
   private static final double LAMBDA = 2.0; // Decay rate in time units
 
-  private final Long2ObjectMap<Node> data;
   private final PolicyStats stats;
   private final SearchableMinHeap<Long, Node> heap;
   private final long maximumCacheSize;
@@ -28,7 +24,6 @@ public final class SALrfuPolicy implements Policy {
     var settings = new BasicSettings(config);
     this.maximumCacheSize = settings.maximumSize();
     this.stats = new PolicyStats(name());
-    this.data = new Long2ObjectOpenHashMap<>();
     this.heap = new SearchableMinHeap<>((int) maximumCacheSize, this::compareNodes);
     this.currentCacheSize = 0;
     this.currentTime = 0;
@@ -39,11 +34,10 @@ public final class SALrfuPolicy implements Policy {
     stats.recordOperation();
     currentTime++;
 
-    Node node = data.get(event.key());
+    Node node = heap.get(event.key());
     if (node == null) {
       long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
       node = new Node(event.key(), chunksAmount, currentTime);
-      data.put(event.key(), node);
     }
     if (!heap.contains(node.key)) {
       stats.addDelay(event.retrievalDelay());
@@ -54,7 +48,7 @@ public final class SALrfuPolicy implements Policy {
         Consts.BANDWIDTH
       );
       stats.addLatency(latency);
-    }else{
+    } else {
       double latency = calculateLatency(
         event.retrievalDelay(),
         event.itemSize() * Consts.CHUNK_SIZE,
@@ -98,7 +92,12 @@ public final class SALrfuPolicy implements Policy {
   }
 
   private int compareNodes(long k1, long k2) {
-    return Double.compare(data.get(k1).score, data.get(k2).score);
+    Node p1 = heap.get(k1);
+    Node p2 = heap.get(k2);
+    if (p1 == null || p2 == null) {
+      throw new IllegalStateException("Node not found in heap: " + k1 + " or " + k2);
+    }
+    return Double.compare(p1.score, p2.score);
   }
 
 

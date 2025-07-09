@@ -10,8 +10,8 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalcul
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+
+import java.util.Objects;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
@@ -29,7 +29,6 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
 
   /* ------------------------------  global state  -------------------------------- */
   private final PolicyStats stats;
-  private final Long2ObjectMap<Prefix> data;
   private final SearchableMinHeap<Long, Prefix> heapLRU;  // recency order
   private final SearchableMinHeap<Long, Prefix> heapLFU;  // score order
   private final Source source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
@@ -60,7 +59,6 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     this.maxCacheLFU = maximumCacheSize - maxCacheLRU;
 
     this.stats = new PolicyStats(name());
-    this.data = new Long2ObjectOpenHashMap<>();
     this.heapLRU = new SearchableMinHeap<>((int) maximumCacheSize, this::compareLRU);
     this.heapLFU = new SearchableMinHeap<>((int) maximumCacheSize, this::compareLFU);
 
@@ -75,11 +73,10 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     opCounter++;
     stats.recordOperation();
     long key = event.key();
-    Prefix p = data.get(key);
+    Prefix p = Objects.requireNonNullElse(heapLFU.get(key), heapLRU.get(key));
     if (p == null) {
       long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
       p = new Prefix(key, chunksAmount, source, now);
-      data.put(key, p);
     }
 
     /* stats bookkeeping */
@@ -338,11 +335,15 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private int compareLRU(long a, long b) {
-    return Double.compare(data.get(a).lruScore(), data.get(b).lruScore());
+    Prefix p1 = Objects.requireNonNullElse(heapLRU.get(a), heapLFU.get(a));
+    Prefix p2 = Objects.requireNonNullElse(heapLRU.get(b), heapLFU.get(b));
+    return Double.compare(p1.lruScore(), p2.lruScore());
   }
 
   private int compareLFU(long a, long b) {
-    return Double.compare(data.get(a).lfuScore(), data.get(b).lfuScore());
+    Prefix p1 = Objects.requireNonNullElse(heapLRU.get(a), heapLFU.get(a));
+    Prefix p2 = Objects.requireNonNullElse(heapLRU.get(b), heapLFU.get(b));
+    return Double.compare(p1.lfuScore(), p2.lfuScore());
   }
 
   /* ------------------------------  plumbing  ----------------------------------- */

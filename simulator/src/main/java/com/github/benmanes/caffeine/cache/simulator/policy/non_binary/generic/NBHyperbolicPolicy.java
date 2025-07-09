@@ -8,11 +8,8 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.SearchableMinHeap;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.LogNormalSource;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import java.util.ArrayDeque;
 import java.util.Queue;
@@ -22,7 +19,6 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Tim
 
 @Policy.PolicySpec(name = "non-binary.Hyperbolic")
 public final class NBHyperbolicPolicy implements Policy {
-  final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
   final long maximumCacheSize; // in chunks
@@ -35,7 +31,6 @@ public final class NBHyperbolicPolicy implements Policy {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
-    this.data = new Long2ObjectOpenHashMap<>();
     this.requests = new ArrayDeque<>();
     currentTime = 0;
 
@@ -50,7 +45,7 @@ public final class NBHyperbolicPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     long itemKey = event.key();
-    var existingPrefix = data.getOrDefault(itemKey, null);
+    var existingPrefix = scoreMinHeap.get(itemKey);
     policyStats.recordOperation();
     currentTime++;
 
@@ -69,10 +64,6 @@ public final class NBHyperbolicPolicy implements Policy {
   private void onRequest(Prefix prefix, double sourceDelay) {
     recordRequestStatistics(prefix, sourceDelay);
     handleRequestsFrequency(prefix);
-
-    if (!data.containsKey(prefix.itemKey)) {
-      data.put(prefix.itemKey, prefix);
-    }
     waterFill(prefix);
   }
 
@@ -82,7 +73,7 @@ public final class NBHyperbolicPolicy implements Policy {
     requests.add(prefix.itemKey);
     if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
       long lastRequestItemKey = requests.remove();
-      var lastRequestedPrefix = data.getOrDefault(lastRequestItemKey, null);
+      var lastRequestedPrefix = scoreMinHeap.get(lastRequestItemKey);
       policyStats.recordOperation();
 
       if (lastRequestedPrefix != null) {
@@ -177,8 +168,11 @@ public final class NBHyperbolicPolicy implements Policy {
   }
 
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
-    Prefix p1 = data.get(prefixKey1);
-    Prefix p2 = data.get(prefixKey2);
+    Prefix p1 = scoreMinHeap.get(prefixKey1);
+    Prefix p2 = scoreMinHeap.get(prefixKey2);
+    if (p1 == null || p2 == null) {
+      throw new IllegalArgumentException("Prefixes not found in the heap");
+    }
     return p1.hyperbolicCompareTo(p2);
   }
 

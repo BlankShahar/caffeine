@@ -8,20 +8,17 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.SearchableMinHeap;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.LogNormalSource;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import java.util.ArrayDeque;
+import java.util.Objects;
 import java.util.Queue;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
 @Policy.PolicySpec(name = "non-binary.SegmentedLRU")
 public final class NBSegmentedLruPolicy implements Policy {
-  final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
 
@@ -41,7 +38,6 @@ public final class NBSegmentedLruPolicy implements Policy {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
-    this.data = new Long2ObjectOpenHashMap<>();
     this.requests = new ArrayDeque<>();
     currentTime = 0;
 
@@ -61,7 +57,7 @@ public final class NBSegmentedLruPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     long itemKey = event.key();
-    Prefix prefix = data.get(itemKey);
+    Prefix prefix = Objects.requireNonNullElse(probationHeap.get(itemKey), protectedHeap.get(itemKey));
     policyStats.recordOperation();
     currentTime++;
 
@@ -69,7 +65,6 @@ public final class NBSegmentedLruPolicy implements Policy {
       // First time we see this item
       long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
       prefix = new Prefix(itemKey, chunksAmount, source, currentTime);
-      data.put(itemKey, prefix);
       prefix.isInProtected = false;
       // We put new items in the probation segment
     } else prefix.lastRequestTime = currentTime;
@@ -84,8 +79,7 @@ public final class NBSegmentedLruPolicy implements Policy {
     handleRequestsFrequency(prefix);
 
     // On second reference, if not in protected, we attempt promotion
-    if (!prefix.isInProtected && prefix.chunksAmount > 0)
-      promoteToProtected(prefix);
+    if (!prefix.isInProtected && prefix.chunksAmount > 0) promoteToProtected(prefix);
 
     // Attempt partial caching expansions
     waterFill(prefix);
@@ -134,7 +128,8 @@ public final class NBSegmentedLruPolicy implements Policy {
 
     if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
       long lastRequestItemKey = requests.remove();
-      var lastPrefix = data.get(lastRequestItemKey);
+      var lastPrefix = Objects.requireNonNullElse(probationHeap.get(lastRequestItemKey), protectedHeap.get(lastRequestItemKey));
+      ;
       if (lastPrefix != null) {
         lastPrefix.requestsCountInPeriod--;
       }
@@ -149,12 +144,7 @@ public final class NBSegmentedLruPolicy implements Policy {
     policyStats.addHits(prefix.chunksAmount);
     policyStats.addMisses(Math.max(0, idealChunks - prefix.chunksAmount));
 
-    double underflowDelay = TimeCalculations.calculateUnderflowDelay(
-      sourceDelay,
-      prefix.fullItemSizeInMB(),
-      prefix.sizeInMB(),
-      Consts.BANDWIDTH
-    );
+    double underflowDelay = TimeCalculations.calculateUnderflowDelay(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
     policyStats.addDelay(underflowDelay);
     double latency = calculateLatency(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
     policyStats.addLatency(latency);
@@ -167,10 +157,9 @@ public final class NBSegmentedLruPolicy implements Policy {
   private void waterFill(Prefix prefix) {
     // 1) Expand as long as we are not full and haven't hit the
     //    capacity limit (probation or protected).
-    if (prefix.isInProtected)
-      while (!prefix.isFull() && currentProtectedSize < maxProtectedSize) {
-        extendPrefix(prefix);
-      }
+    if (prefix.isInProtected) while (!prefix.isFull() && currentProtectedSize < maxProtectedSize) {
+      extendPrefix(prefix);
+    }
     else while (!prefix.isFull() && currentProbationSize < maxProbationSize) {
       extendPrefix(prefix);
     }
@@ -181,8 +170,7 @@ public final class NBSegmentedLruPolicy implements Policy {
     //    if the new chunk would yield a bigger improvement than the victim's chunk.
     Prefix victim;
     do {
-      if (prefix.isInProtected)
-        victim = findVictimFromProtected();
+      if (prefix.isInProtected) victim = findVictimFromProtected();
       else victim = findVictimFromProbation();
       if (victim == null || victim.itemKey == prefix.itemKey) break;
 
@@ -256,11 +244,19 @@ public final class NBSegmentedLruPolicy implements Policy {
   }
 
   public int compareProbation(long key1, long key2) {
-    return data.get(key1).lruCompareTo(data.get(key2));
+    Prefix p1 = probationHeap.get(key1);
+    Prefix p2 = probationHeap.get(key2);
+    assert p1 != null;
+    assert p2 != null;
+    return p1.lruCompareTo(p2);
   }
 
   public int compareProtected(long key1, long key2) {
-    return data.get(key1).lruCompareTo(data.get(key2));
+    Prefix p1 = probationHeap.get(key1);
+    Prefix p2 = probationHeap.get(key2);
+    assert p1 != null;
+    assert p2 != null;
+    return p1.lruCompareTo(p2);
   }
 
   @Override

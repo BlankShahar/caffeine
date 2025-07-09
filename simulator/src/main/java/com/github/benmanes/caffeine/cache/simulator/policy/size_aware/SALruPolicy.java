@@ -14,7 +14,6 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Tim
 @Policy.PolicySpec(name = "size-aware.LRU")
 public final class SALruPolicy implements Policy {
   final PolicyStats policyStats;
-  final Long2ObjectMap<Item> data;
   final SearchableMinHeap<Long, Item> minHeap;
   final long maximumCacheSize;
   long currentCacheSize;
@@ -23,7 +22,6 @@ public final class SALruPolicy implements Policy {
   public SALruPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
-    this.data = new Long2ObjectOpenHashMap<>();
     this.minHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::compareItems);
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
@@ -40,7 +38,7 @@ public final class SALruPolicy implements Policy {
     currentTime++;
 //    System.out.println(currentTime);
 
-    Item item = data.get(itemKey);
+    Item item = minHeap.get(itemKey);
     if (item != null) {
       // Hit
       policyStats.recordHit();
@@ -72,13 +70,11 @@ public final class SALruPolicy implements Policy {
 
       while (currentCacheSize + itemSize > maximumCacheSize && !minHeap.isEmpty()) {
         Item victim = minHeap.extractMin().value();
-        data.remove(victim.key);
         currentCacheSize -= victim.size;
         policyStats.recordEviction();
       }
 
       Item newItem = new Item(itemKey, itemSize, currentTime);
-      data.put(itemKey, newItem);
       minHeap.upsert(itemKey, newItem);
       currentCacheSize += itemSize;
       policyStats.recordAdmission();
@@ -86,8 +82,9 @@ public final class SALruPolicy implements Policy {
   }
 
   public int compareItems(long itemKey1, long itemKey2) {
-    Item p1 = data.get(itemKey1);
-    Item p2 = data.get(itemKey2);
+    Item p1 = minHeap.get(itemKey1);
+    Item p2 = minHeap.get(itemKey2);
+    assert p1 != null && p2 != null;
     return Long.compare(p1.lastAccessTime, p2.lastAccessTime);
   }
 

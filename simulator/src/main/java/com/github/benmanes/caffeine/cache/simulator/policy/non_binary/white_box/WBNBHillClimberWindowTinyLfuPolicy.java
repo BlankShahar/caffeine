@@ -8,19 +8,16 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.SearchableMinHeap;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.LogNormalSource;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import java.util.ArrayDeque;
+import java.util.Objects;
 import java.util.Queue;
 
 
 @Policy.PolicySpec(name = "non-binary.white-box.HillClimberWindowTinyLFU")
 public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
-  final Long2ObjectMap<Prefix> data;
   final Queue<Long> requests;
   static long currentTime;
   final long maximumCacheSize; // in chunks
@@ -38,7 +35,6 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
-    this.data = new Long2ObjectOpenHashMap<>();
     this.requests = new ArrayDeque<>();
 
     this.firstCacheScoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixesFirstCache);
@@ -65,7 +61,10 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     long itemKey = event.key();
-    var existingPrefix = data.getOrDefault(itemKey, null);
+    var existingPrefix = Objects.requireNonNullElse(
+      firstCacheScoreMinHeap.get(itemKey),
+      secondCacheScoreMinHeap.get(itemKey)
+    );
     policyStats.recordOperation();
     currentTime++;
 
@@ -85,10 +84,6 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     recordRequestStatistics(prefix, sourceDelay);
     handleRequestsFrequency(prefix);
     updateParameters(sourceDelay);
-
-    if (!data.containsKey(prefix.itemKey)) {
-      data.put(prefix.itemKey, prefix);
-    }
     waterFill(prefix);
   }
 
@@ -98,7 +93,10 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     requests.add(prefix.itemKey);
     if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
       long lastRequestItemKey = requests.remove();
-      var lastRequestedPrefix = data.getOrDefault(lastRequestItemKey, null);
+      var lastRequestedPrefix = Objects.requireNonNullElse(
+        firstCacheScoreMinHeap.get(lastRequestItemKey),
+        secondCacheScoreMinHeap.get(lastRequestItemKey)
+      );
       policyStats.recordOperation();
 
       if (lastRequestedPrefix != null) {
@@ -314,14 +312,20 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   public int comparePrefixesFirstCache(long prefixKey1, long prefixKey2) {
-    Prefix p1 = data.get(prefixKey1);
-    Prefix p2 = data.get(prefixKey2);
+    Prefix p1 = firstCacheScoreMinHeap.get(prefixKey1);
+    Prefix p2 = firstCacheScoreMinHeap.get(prefixKey2);
+    if (p1 == null || p2 == null) {
+      throw new IllegalStateException("Prefix not found in heap: " + prefixKey1 + " or " + prefixKey2);
+    }
     return p1.pipelineFirstCacheCompareTo(p2);
   }
 
   public int comparePrefixesSecondCache(long prefixKey1, long prefixKey2) {
-    Prefix p1 = data.get(prefixKey1);
-    Prefix p2 = data.get(prefixKey2);
+    Prefix p1 = secondCacheScoreMinHeap.get(prefixKey1);
+    Prefix p2 = secondCacheScoreMinHeap.get(prefixKey2);
+    if (p1 == null || p2 == null) {
+      throw new IllegalStateException("Prefix not found in heap: " + prefixKey1 + " or " + prefixKey2);
+    }
     return p1.pipelineSecondCacheCompareTo(p2);
   }
 

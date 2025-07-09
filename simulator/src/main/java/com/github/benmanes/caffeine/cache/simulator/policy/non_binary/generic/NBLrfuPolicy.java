@@ -8,17 +8,13 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.SearchableMinHeap;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.LogNormalSource;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
 @Policy.PolicySpec(name = "non-binary.LRFU")
 public final class NBLrfuPolicy implements Policy {
-  final Long2ObjectMap<Prefix> data;
   long currentTime;
   final long maximumCacheSize; // in chunks
   long currentCacheSize; // in chunks
@@ -30,7 +26,6 @@ public final class NBLrfuPolicy implements Policy {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
 
-    this.data = new Long2ObjectOpenHashMap<>();
     currentTime = 0;
 
     this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
@@ -43,7 +38,7 @@ public final class NBLrfuPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     long itemKey = event.key();
-    var existingPrefix = data.getOrDefault(itemKey, null);
+    var existingPrefix = scoreMinHeap.get(itemKey);
     policyStats.recordOperation();
     currentTime++;
 
@@ -60,10 +55,6 @@ public final class NBLrfuPolicy implements Policy {
   private void onRequest(Prefix prefix, double sourceDelay) {
     recordRequestStatistics(prefix, sourceDelay);
     prefix.updateScore(currentTime);
-
-    if (!data.containsKey(prefix.itemKey)) {
-      data.put(prefix.itemKey, prefix);
-    }
     waterFill(prefix);
   }
 
@@ -140,8 +131,11 @@ public final class NBLrfuPolicy implements Policy {
   }
 
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
-    Prefix p1 = data.get(prefixKey1);
-    Prefix p2 = data.get(prefixKey2);
+    Prefix p1 = scoreMinHeap.get(prefixKey1);
+    Prefix p2 = scoreMinHeap.get(prefixKey2);
+    if (p1 == null || p2 == null) {
+      throw new IllegalArgumentException("Prefixes not found in the heap");
+    }
     return p1.lrfuCompareTo(p2);
   }
 
