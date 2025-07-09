@@ -168,12 +168,11 @@ public class SearchableMinHeap<K, V> {
   }
 
   public void upsert(K k, V v) {
-    if (this.contains(k)){
+    if (this.contains(k)) {
       int i = getIndex(k);
       downHeap(i);
       upHeap(i);
-    }
-    else
+    } else
       this.insert(k, v);
   }
 
@@ -267,7 +266,7 @@ public class SearchableMinHeap<K, V> {
       }
 
       leftChildIdx = (minimalChildIdx << 1) + 1;
-      rightChildIdx = minimalChildIdx + 1;
+      rightChildIdx = leftChildIdx + 1;
     }
 
     this.idxMap.put(targetItem, i);
@@ -289,7 +288,7 @@ public class SearchableMinHeap<K, V> {
     while (i != 0 && !isWellPositioned) {
       parentIdx = (i - 1) >>> 1;
       parentKey = heap[parentIdx];
-      isWellPositioned = c.compare(parentKey, target) < 0;
+      isWellPositioned = c.compare(parentKey, target) <= 0;
 
       if (!isWellPositioned) {
         this.idxMap.put(parentKey, i);
