@@ -10,7 +10,7 @@ fun Project.version(major: Int, minor: Int, patch: Int, releaseBuild: Boolean) {
 }
 
 fun Project.defaultJvmArgs(): List<String> {
-  val jvmArgs = mutableListOf("-Xmx4g")
+  val jvmArgs = mutableListOf("-Xmx12g")
   if (System.getenv("GRAALVM") == "true") {
     jvmArgs += listOf(
       "-XX:+UnlockExperimentalVMOptions", "-Dgraal.ShowConfiguration=info",
