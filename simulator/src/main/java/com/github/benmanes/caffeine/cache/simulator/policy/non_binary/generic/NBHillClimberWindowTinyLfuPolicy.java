@@ -336,7 +336,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
 
   private int compareLRU(long a, long b) {
     Prefix p1 = heapLRU.get(a);
-    Prefix p2 = heapLFU.get(b);
+    Prefix p2 = heapLRU.get(b);
     assert p1 != null;
     assert p2 != null;
     return Double.compare(p1.lruScore(), p2.lruScore());
