@@ -335,16 +335,16 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private int compareLRU(long a, long b) {
-    Prefix p1 = Optional.ofNullable(heapLRU.get(a)).orElse(heapLFU.get(a));
-    Prefix p2 = Optional.ofNullable(heapLRU.get(b)).orElse(heapLFU.get(b));
+    Prefix p1 = heapLRU.get(a);
+    Prefix p2 = heapLFU.get(b);
     assert p1 != null;
     assert p2 != null;
     return Double.compare(p1.lruScore(), p2.lruScore());
   }
 
   private int compareLFU(long a, long b) {
-    Prefix p1 = Optional.ofNullable(heapLRU.get(a)).orElse(heapLFU.get(a));
-    Prefix p2 = Optional.ofNullable(heapLRU.get(b)).orElse(heapLFU.get(b));
+    Prefix p1 = heapLFU.get(a);
+    Prefix p2 = heapLFU.get(b);
     assert p1 != null;
     assert p2 != null;
     return Double.compare(p1.lfuScore(), p2.lfuScore());

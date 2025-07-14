@@ -251,8 +251,8 @@ public final class NBSegmentedLruPolicy implements Policy {
   }
 
   public int compareProtected(long key1, long key2) {
-    Prefix p1 = probationHeap.get(key1);
-    Prefix p2 = probationHeap.get(key2);
+    Prefix p1 = protectedHeap.get(key1);
+    Prefix p2 = protectedHeap.get(key2);
     assert p1 != null;
     assert p2 != null;
     return p1.lruCompareTo(p2);
