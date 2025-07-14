@@ -12,7 +12,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.So
 import com.typesafe.config.Config;
 
 import java.util.ArrayDeque;
-import java.util.Objects;
+import java.util.Optional;
 import java.util.Queue;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
@@ -53,7 +53,7 @@ public final class NBArcPolicy implements Policy {
     policyStats.recordOperation();
     currentTime++;
     long itemKey = event.key();
-    Prefix prefix = Objects.requireNonNullElse(heapT1.get(itemKey), heapT2.get(itemKey));
+    Prefix prefix = Optional.ofNullable(heapT1.get(itemKey)).orElse(heapT2.get(itemKey));
     if (prefix == null) {
       long chunksAmount = event.itemSize();
       prefix = new Prefix(itemKey, chunksAmount, source, currentTime);
@@ -315,7 +315,7 @@ public final class NBArcPolicy implements Policy {
     requests.add(prefix.itemKey);
     if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
       long last = requests.remove();
-      Prefix lastPrefix = Objects.requireNonNullElse(heapT1.get(last), heapT2.get(last));
+      Prefix lastPrefix = Optional.ofNullable(heapT1.get(last)).orElse(heapT2.get(last));
       if (lastPrefix != null) lastPrefix.requestsCountInPeriod--;
     }
   }
@@ -334,8 +334,10 @@ public final class NBArcPolicy implements Policy {
   }
 
   public int comparePrefixes(long k1, long k2) {
-    Prefix p1 = Objects.requireNonNullElse(heapT1.get(k1), heapT2.get(k1));
-    Prefix p2 = Objects.requireNonNullElse(heapT1.get(k2), heapT2.get(k2));
+    Prefix p1 = Optional.ofNullable(heapT1.get(k1)).orElse(heapT2.get(k1));
+    Prefix p2 = Optional.ofNullable(heapT1.get(k2)).orElse(heapT2.get(k2));
+    assert p1 != null;
+    assert p2 != null;
     return p1.lruCompareTo(p2);
   }
 

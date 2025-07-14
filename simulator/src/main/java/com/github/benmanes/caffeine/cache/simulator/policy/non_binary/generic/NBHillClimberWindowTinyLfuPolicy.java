@@ -11,7 +11,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.No
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
 
-import java.util.Objects;
+import java.util.Optional;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
@@ -73,7 +73,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     opCounter++;
     stats.recordOperation();
     long key = event.key();
-    Prefix p = Objects.requireNonNullElse(heapLFU.get(key), heapLRU.get(key));
+    Prefix p = Optional.ofNullable(heapLFU.get(key)).orElse(heapLRU.get(key));
     if (p == null) {
       long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
       p = new Prefix(key, chunksAmount, source, now);
@@ -335,14 +335,18 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private int compareLRU(long a, long b) {
-    Prefix p1 = Objects.requireNonNullElse(heapLRU.get(a), heapLFU.get(a));
-    Prefix p2 = Objects.requireNonNullElse(heapLRU.get(b), heapLFU.get(b));
+    Prefix p1 = Optional.ofNullable(heapLRU.get(a)).orElse(heapLFU.get(a));
+    Prefix p2 = Optional.ofNullable(heapLRU.get(b)).orElse(heapLFU.get(b));
+    assert p1 != null;
+    assert p2 != null;
     return Double.compare(p1.lruScore(), p2.lruScore());
   }
 
   private int compareLFU(long a, long b) {
-    Prefix p1 = Objects.requireNonNullElse(heapLRU.get(a), heapLFU.get(a));
-    Prefix p2 = Objects.requireNonNullElse(heapLRU.get(b), heapLFU.get(b));
+    Prefix p1 = Optional.ofNullable(heapLRU.get(a)).orElse(heapLFU.get(a));
+    Prefix p2 = Optional.ofNullable(heapLRU.get(b)).orElse(heapLFU.get(b));
+    assert p1 != null;
+    assert p2 != null;
     return Double.compare(p1.lfuScore(), p2.lfuScore());
   }
 

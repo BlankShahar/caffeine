@@ -12,7 +12,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.So
 import com.typesafe.config.Config;
 
 import java.util.ArrayDeque;
-import java.util.Objects;
+import java.util.Optional;
 import java.util.Queue;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
@@ -57,7 +57,7 @@ public final class NBSegmentedLruPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     long itemKey = event.key();
-    Prefix prefix = Objects.requireNonNullElse(probationHeap.get(itemKey), protectedHeap.get(itemKey));
+    Prefix prefix = Optional.ofNullable(probationHeap.get(itemKey)).orElse(protectedHeap.get(itemKey));
     policyStats.recordOperation();
     currentTime++;
 
@@ -128,8 +128,7 @@ public final class NBSegmentedLruPolicy implements Policy {
 
     if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
       long lastRequestItemKey = requests.remove();
-      var lastPrefix = Objects.requireNonNullElse(probationHeap.get(lastRequestItemKey), protectedHeap.get(lastRequestItemKey));
-      ;
+      var lastPrefix = Optional.ofNullable(probationHeap.get(lastRequestItemKey)).orElse(protectedHeap.get(lastRequestItemKey));
       if (lastPrefix != null) {
         lastPrefix.requestsCountInPeriod--;
       }
