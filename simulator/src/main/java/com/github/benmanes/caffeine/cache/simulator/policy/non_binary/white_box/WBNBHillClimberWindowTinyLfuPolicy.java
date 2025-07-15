@@ -12,7 +12,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.So
 import com.typesafe.config.Config;
 
 import java.util.ArrayDeque;
-import java.util.Objects;
+import java.util.Optional;
 import java.util.Queue;
 
 
@@ -61,8 +61,8 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     long itemKey = event.key();
-    var existingPrefix = Objects.requireNonNullElse(
-      firstCacheScoreMinHeap.get(itemKey),
+    var existingPrefix = Optional.ofNullable(
+      firstCacheScoreMinHeap.get(itemKey)).orElse(
       secondCacheScoreMinHeap.get(itemKey)
     );
     policyStats.recordOperation();
@@ -93,8 +93,8 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     requests.add(prefix.itemKey);
     if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
       long lastRequestItemKey = requests.remove();
-      var lastRequestedPrefix = Objects.requireNonNullElse(
-        firstCacheScoreMinHeap.get(lastRequestItemKey),
+      var lastRequestedPrefix = Optional.ofNullable(
+        firstCacheScoreMinHeap.get(lastRequestItemKey)).orElse(
         secondCacheScoreMinHeap.get(lastRequestItemKey)
       );
       policyStats.recordOperation();
