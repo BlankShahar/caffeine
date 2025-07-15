@@ -15,6 +15,8 @@ import java.util.ArrayDeque;
 import java.util.Optional;
 import java.util.Queue;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
+
 
 @Policy.PolicySpec(name = "non-binary.white-box.HillClimberWindowTinyLFU")
 public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
@@ -117,6 +119,9 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     // Total delay
     double underflowDelay = calculateDelay(sourceDelay, old);
     policyStats.addDelay(underflowDelay);
+
+    double latency = calculateLatency(sourceDelay, old.fullItemSizeInMB(), old.sizeInMB(), Consts.BANDWIDTH);
+    policyStats.addLatency(latency);
   }
 
   private void updateParameters(double retrievalDelay) {
