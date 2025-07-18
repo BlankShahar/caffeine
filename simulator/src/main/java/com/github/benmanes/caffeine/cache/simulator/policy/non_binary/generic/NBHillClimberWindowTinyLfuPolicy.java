@@ -66,10 +66,50 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     STEP_SIZE = 0.05;
   }
 
-  /* ------------------------------  main entry  ---------------------------------- */
   @Override
   public void record(AccessEvent event) {
     now++;
+    switch (event.operation()) {
+      case READ:
+        onRead(event);
+        break;
+      case WRITE:
+        onWrite(event);
+        break;
+      case DELETE:
+        onDelete(event);
+      default:
+        throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+    }
+  }
+
+  private void onWrite(AccessEvent event) {
+    stats.recordOperation();
+    onDelete(event);
+    onRead(event);
+  }
+
+  private void onDelete(AccessEvent event) {
+    var existingPrefix = heapLRU.get(event.key());
+    if (existingPrefix != null) {
+      // prefix exists, remove it
+      heapLRU.remove(existingPrefix.itemKey);
+      sizeLRU -= existingPrefix.chunksAmount;
+      stats.recordEviction();
+      stats.recordOperation();
+    }
+
+    existingPrefix = heapLFU.get(event.key());
+    if (existingPrefix != null) {
+      // prefix exists, remove it
+      heapLFU.remove(existingPrefix.itemKey);
+      sizeLFU -= existingPrefix.chunksAmount;
+      stats.recordEviction();
+      stats.recordOperation();
+    }
+  }
+
+  private void onRead(AccessEvent event) {
     opCounter++;
     stats.recordOperation();
     long key = event.key();

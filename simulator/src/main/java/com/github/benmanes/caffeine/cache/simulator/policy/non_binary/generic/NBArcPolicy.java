@@ -10,6 +10,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalcul
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.LogNormalSource;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import java.util.ArrayDeque;
 import java.util.Optional;
@@ -28,6 +29,7 @@ public final class NBArcPolicy implements Policy {
   final PolicyStats policyStats;
   final SearchableMinHeap<Long, Prefix> heapT1;
   final SearchableMinHeap<Long, Prefix> heapT2;
+  final Long2ObjectOpenHashMap<Prefix> B1, B2;
   final Source source;
 
   enum Q {T1, T2, B1, B2, NONE}
@@ -46,12 +48,75 @@ public final class NBArcPolicy implements Policy {
     this.source = new LogNormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
     this.heapT1 = new SearchableMinHeap<>((int) maximumCacheSize, this::comparePrefixes);
     this.heapT2 = new SearchableMinHeap<>((int) maximumCacheSize, this::comparePrefixes);
+    this.B1 = new Long2ObjectOpenHashMap<>();
+    this.B2 = new Long2ObjectOpenHashMap<>();
   }
 
   @Override
   public void record(AccessEvent event) {
-    policyStats.recordOperation();
     currentTime++;
+    switch (event.operation()) {
+      case READ:
+        onRead(event);
+        break;
+      case WRITE:
+        onWrite(event);
+        break;
+      case DELETE:
+        onDelete(event);
+      default:
+        throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+    }
+  }
+
+  private void onWrite(AccessEvent event) {
+    policyStats.recordOperation();
+    onDelete(event);
+    onRead(event);
+  }
+
+  private void onDelete(AccessEvent event) {
+    var existingPrefix = heapT1.get(event.key());
+    if (existingPrefix != null) {
+      // prefix exists, remove it
+      heapT1.remove(existingPrefix.itemKey);
+      sizeT1 -= existingPrefix.chunksAmount;
+      if (existingPrefix.isEmpty()) existingPrefix.queue = Q.NONE;
+      policyStats.recordEviction();
+      policyStats.recordOperation();
+    }
+
+    existingPrefix = heapT2.get(event.key());
+    if (existingPrefix != null) {
+      // prefix exists, remove it
+      heapT2.remove(existingPrefix.itemKey);
+      sizeT2 -= existingPrefix.chunksAmount;
+      if (existingPrefix.isEmpty()) existingPrefix.queue = Q.NONE;
+      policyStats.recordEviction();
+      policyStats.recordOperation();
+    }
+
+    if (B1.containsKey(event.key())) {
+      // prefix exists in B1, remove it
+      Prefix prefix = B1.remove(event.key());
+      sizeB1 -= prefix.fullItemChunksAmount;
+      if (prefix.isEmpty()) prefix.queue = Q.NONE;
+      policyStats.recordEviction();
+      policyStats.recordOperation();
+    }
+
+    if (B2.containsKey(event.key())) {
+      // prefix exists in B1, remove it
+      Prefix prefix = B2.remove(event.key());
+      sizeB2 -= prefix.fullItemChunksAmount;
+      if (prefix.isEmpty()) prefix.queue = Q.NONE;
+      policyStats.recordEviction();
+      policyStats.recordOperation();
+    }
+  }
+
+  private void onRead(AccessEvent event) {
+    policyStats.recordOperation();
     long itemKey = event.key();
     Prefix prefix = Optional.ofNullable(heapT1.get(itemKey)).orElse(heapT2.get(itemKey));
     if (prefix == null) {
@@ -162,8 +227,9 @@ public final class NBArcPolicy implements Policy {
     long maxSizeT1 = maximumCacheSize - p;
     if (prefix.fullItemChunksAmount > maxSizeT1) {
       prefix.queue = Q.B1;
-      prefix.chunksAmount = 0;
       sizeB1 += prefix.fullItemChunksAmount;
+      B1.put(prefix.itemKey, prefix);
+      prefix.chunksAmount = 0;
       return;
     }
 
@@ -187,16 +253,22 @@ public final class NBArcPolicy implements Policy {
       }
       if (prefix.queue == Q.T1)
         prefix.queue = Q.B2;
-      prefix.chunksAmount = 0;
+      B2.put(prefix.itemKey, prefix);
       sizeB2 += prefix.fullItemChunksAmount;
+      prefix.chunksAmount = 0;
       return;
     }
 
     if (heapT1.contains(prefix.itemKey)) {
       heapT1.remove(prefix.itemKey);
       sizeT1 -= prefix.chunksAmount;
-    } else if (prefix.queue == Q.B1) sizeB1 -= prefix.fullItemChunksAmount;
-    else if (prefix.queue == Q.B2) sizeB2 -= prefix.fullItemChunksAmount;
+    } else if (prefix.queue == Q.B1) {
+      B1.remove(prefix.itemKey);
+      sizeB1 -= prefix.fullItemChunksAmount;
+    } else if (prefix.queue == Q.B2) {
+      B2.remove(prefix.itemKey);
+      sizeB2 -= prefix.fullItemChunksAmount;
+    }
 
     if ((prefix.queue == Q.NONE || prefix.queue == Q.B1 || prefix.queue == Q.B2) && prefix.chunksAmount > 0)
       throw new IllegalStateException("A non-empty prefix doesn't suppose to move to T2 from B1 or B2 or NONE - this is a bug!");
@@ -316,6 +388,8 @@ public final class NBArcPolicy implements Policy {
     if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
       long last = requests.remove();
       Prefix lastPrefix = Optional.ofNullable(heapT1.get(last)).orElse(heapT2.get(last));
+      if (lastPrefix == null) lastPrefix = Optional.ofNullable(B1.get(last)).orElse(B2.get(last));
+
       if (lastPrefix != null) lastPrefix.requestsCountInPeriod--;
     }
   }

@@ -56,10 +56,51 @@ public final class NBSegmentedLruPolicy implements Policy {
 
   @Override
   public void record(AccessEvent event) {
+    currentTime++;
+    switch (event.operation()) {
+      case READ:
+        onRead(event);
+        break;
+      case WRITE:
+        onWrite(event);
+        break;
+      case DELETE:
+        onDelete(event);
+      default:
+        throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+    }
+  }
+
+  private void onWrite(AccessEvent event) {
+    policyStats.recordOperation();
+    onDelete(event);
+    onRead(event);
+  }
+
+  private void onDelete(AccessEvent event) {
+    var existingPrefix = probationHeap.get(event.key());
+    if (existingPrefix != null) {
+      // prefix exists, remove it
+      probationHeap.remove(existingPrefix.itemKey);
+      currentProbationSize -= existingPrefix.chunksAmount;
+      policyStats.recordEviction();
+      policyStats.recordOperation();
+    }
+
+    existingPrefix = protectedHeap.get(event.key());
+    if (existingPrefix != null) {
+      // prefix exists, remove it
+      protectedHeap.remove(existingPrefix.itemKey);
+      currentProtectedSize -= existingPrefix.chunksAmount;
+      policyStats.recordEviction();
+      policyStats.recordOperation();
+    }
+  }
+
+  private void onRead(AccessEvent event) {
     long itemKey = event.key();
     Prefix prefix = Optional.ofNullable(probationHeap.get(itemKey)).orElse(protectedHeap.get(itemKey));
     policyStats.recordOperation();
-    currentTime++;
 
     if (prefix == null) {
       // First time we see this item

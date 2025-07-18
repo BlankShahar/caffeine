@@ -37,22 +37,59 @@ public final class SAArcPolicy implements Policy {
   }
 
   @Override
-  public void record(AccessEvent e) {
+  public void record(AccessEvent event) {
+    currentTime++;
+    switch (event.operation()) {
+      case READ:
+        onRead(event);
+        break;
+      case WRITE:
+        onWrite(event);
+        break;
+      case DELETE:
+        onDelete(event);
+      default:
+        throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+    }
+  }
+
+  private void onWrite(AccessEvent event) {
+    stats.recordOperation();
+    onDelete(event);
+    onRead(event);
+  }
+
+  private void onDelete(AccessEvent event) {
+    var existingItem = data.get(event.key());
+    if (existingItem != null) {
+      // item exists, remove it
+      data.remove(existingItem.key);
+      if (existingItem.q == Q.T1) sizeT1 -= existingItem.size;
+      else if (existingItem.q == Q.T2) sizeT2 -= existingItem.size;
+      else if (existingItem.q == Q.B1) sizeB1 -= existingItem.size;
+      else if (existingItem.q == Q.B2) sizeB2 -= existingItem.size;
+      existingItem.remove();
+      stats.recordEviction();
+      stats.recordOperation();
+    }
+  }
+
+  private void onRead(AccessEvent event) {
     currentTime++;
     stats.recordOperation();
 
-    Node n = data.get(e.key());
+    Node n = data.get(event.key());
     if (n == null) {
-      onMiss(e);
+      onMiss(event);
       return;
     }
 
     if (n.q == Q.T1 || n.q == Q.T2) {
-      onHit(n, e);
+      onHit(n, event);
     } else if (n.q == Q.B1) {
-      onHitB1(n, e);
+      onHitB1(n, event);
     } else if (n.q == Q.B2) {
-      onHitB2(n, e);
+      onHitB2(n, event);
     }
   }
 

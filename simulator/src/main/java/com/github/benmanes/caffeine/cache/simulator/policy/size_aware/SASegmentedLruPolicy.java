@@ -23,11 +23,17 @@ public final class SASegmentedLruPolicy implements Policy {
   final long maxProbationSize;
   final long maximumSize;
 
-  /** Sum of the sizes in the PROTECTED queue. */
+  /**
+   * Sum of the sizes in the PROTECTED queue.
+   */
   long sizeProtected;
-  /** Sum of the sizes in the PROBATION queue. */
+  /**
+   * Sum of the sizes in the PROBATION queue.
+   */
   long sizeProbation;
-  /** Sum of the sizes of all cached entries (protected + probation). */
+  /**
+   * Sum of the sizes of all cached entries (protected + probation).
+   */
   long currentSize;
 
   public SASegmentedLruPolicy(Config config) {
@@ -54,6 +60,40 @@ public final class SASegmentedLruPolicy implements Policy {
 
   @Override
   public void record(AccessEvent event) {
+    switch (event.operation()) {
+      case READ:
+        onRead(event);
+        break;
+      case WRITE:
+        onWrite(event);
+        break;
+      case DELETE:
+        onDelete(event);
+      default:
+        throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+    }
+  }
+
+  private void onWrite(AccessEvent event) {
+    policyStats.recordOperation();
+    onDelete(event);
+    onRead(event);
+  }
+
+  private void onDelete(AccessEvent event) {
+    var existingItem = data.get(event.key());
+    if (existingItem != null) {
+      // Item exists, remove it
+      data.remove(existingItem.key);
+      if (existingItem.type == QueueType.PROTECTED) sizeProtected -= existingItem.size;
+      else sizeProbation -= existingItem.size;
+      existingItem.remove();
+      policyStats.recordEviction();
+      policyStats.recordOperation();
+    }
+  }
+
+  private void onRead(AccessEvent event) {
     policyStats.recordOperation();
     Node node = data.get(event.key());
 
@@ -77,7 +117,6 @@ public final class SASegmentedLruPolicy implements Policy {
         Consts.BANDWIDTH
       );
       policyStats.addLatency(latency);
-
     }
   }
 
@@ -226,7 +265,9 @@ public final class SASegmentedLruPolicy implements Policy {
       this.size = size;
     }
 
-    /** Insert at the tail (MRU) of the given 'head' sentinel. */
+    /**
+     * Insert at the tail (MRU) of the given 'head' sentinel.
+     */
     void appendToTail(Node head) {
       Node tail = head.prev;
       tail.next = this;
@@ -235,13 +276,17 @@ public final class SASegmentedLruPolicy implements Policy {
       head.prev = this;
     }
 
-    /** Move this node to the tail (MRU) of the given 'head' sentinel. */
+    /**
+     * Move this node to the tail (MRU) of the given 'head' sentinel.
+     */
     void moveToTail(Node head) {
       remove();
       appendToTail(head);
     }
 
-    /** Unlinks this node from its doubly-linked list. */
+    /**
+     * Unlinks this node from its doubly-linked list.
+     */
     void remove() {
       if (prev != null && next != null) {
         prev.next = next;

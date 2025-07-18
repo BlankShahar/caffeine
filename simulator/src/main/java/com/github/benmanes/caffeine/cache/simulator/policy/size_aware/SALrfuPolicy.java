@@ -31,6 +31,39 @@ public final class SALrfuPolicy implements Policy {
 
   @Override
   public void record(AccessEvent event) {
+    currentTime++;
+    switch (event.operation()) {
+      case READ:
+        onRead(event);
+        break;
+      case WRITE:
+        onWrite(event);
+        break;
+      case DELETE:
+        onDelete(event);
+      default:
+        throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+    }
+  }
+
+  private void onWrite(AccessEvent event) {
+    stats.recordOperation();
+    onDelete(event);
+    onRead(event);
+  }
+
+  private void onDelete(AccessEvent event) {
+    var existingPrefix = heap.get(event.key());
+    if (existingPrefix != null) {
+      // prefix exists, remove it
+      heap.remove(existingPrefix.key);
+      currentCacheSize -= existingPrefix.size;
+      stats.recordEviction();
+      stats.recordOperation();
+    }
+  }
+
+  private void onRead(AccessEvent event) {
     stats.recordOperation();
     currentTime++;
 

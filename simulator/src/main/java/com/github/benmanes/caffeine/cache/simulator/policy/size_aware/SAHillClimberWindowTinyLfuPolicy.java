@@ -95,11 +95,45 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     return policyStats;
   }
 
-
   @Override
   public void record(AccessEvent event) {
+    switch (event.operation()) {
+      case READ:
+        onRead(event);
+        break;
+      case WRITE:
+        onWrite(event);
+        break;
+      case DELETE:
+        onDelete(event);
+      default:
+        throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+    }
+  }
+
+  private void onWrite(AccessEvent event) {
+    policyStats.recordOperation();
+    onDelete(event);
+    onRead(event);
+  }
+
+  private void onDelete(AccessEvent event) {
+    var existingItem = data.get(event.key());
+    if (existingItem != null) {
+      // Item exists, remove it
+      data.remove(existingItem.key);
+      sizeData -= existingItem.weight;
+      if (existingItem.queue == PROTECTED) protectedSize -= existingItem.weight;
+      else if (existingItem.queue == WINDOW) windowSize -= existingItem.weight;
+      existingItem.remove();
+      policyStats.recordEviction();
+      policyStats.recordOperation();
+    }
+  }
+
+  private void onRead(AccessEvent event) {
     final long key = event.key();
-    final int weight = event.itemSize();//(int) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
+    final long weight = event.itemSize();//(int) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
     policyStats.recordOperation();
     Node node = data.get(key);
     if (sizeData >= (maximumSize >>> 1)) {
@@ -138,7 +172,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
   /**
    * Adds the entry to the admission window, evicting if necessary.
    */
-  private void onMiss(long key, int weight) {
+  private void onMiss(long key, long weight) {
     if (weight > (maximumSize - maxWindow)) {
       policyStats.recordRejection();
       return;
@@ -222,7 +256,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     }
   }
 
-  protected boolean compare(int candidateFreq, int candidateWeight, int victimFreq, int victimWeight) {
+  protected boolean compare(int candidateFreq, long candidateWeight, int victimFreq, long victimWeight) {
     return candidateFreq > victimFreq;
   }
 
@@ -396,7 +430,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
    */
   static final class Node {
     final long key;
-    final int weight;
+    final long weight;
 
     QueueType queue;
     Node prev;
@@ -415,7 +449,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     /**
      * Creates a new, unlinked node.
      */
-    public Node(long key, int weight, QueueType queue) {
+    public Node(long key, long weight, QueueType queue) {
       this.queue = queue;
       this.key = key;
       this.weight = weight;

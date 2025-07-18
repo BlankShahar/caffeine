@@ -60,15 +60,57 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     currentTotalDelay = 0;
   }
 
+
   @Override
   public void record(AccessEvent event) {
+    currentTime++;
+    switch (event.operation()) {
+      case READ:
+        onRead(event);
+        break;
+      case WRITE:
+        onWrite(event);
+        break;
+      case DELETE:
+        onDelete(event);
+      default:
+        throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+    }
+  }
+
+  private void onWrite(AccessEvent event) {
+    policyStats.recordOperation();
+    onDelete(event);
+    onRead(event);
+  }
+
+  private void onDelete(AccessEvent event) {
+    var existingPrefix = firstCacheScoreMinHeap.get(event.key());
+    if (existingPrefix != null) {
+      // prefix exists, remove it
+      firstCacheScoreMinHeap.remove(existingPrefix.itemKey);
+      currentFirstCacheSize -= existingPrefix.chunksAmount;
+      policyStats.recordEviction();
+      policyStats.recordOperation();
+    }
+
+    existingPrefix = secondCacheScoreMinHeap.get(event.key());
+    if (existingPrefix != null) {
+      // prefix exists, remove it
+      secondCacheScoreMinHeap.remove(existingPrefix.itemKey);
+      currentSecondCacheSize -= existingPrefix.chunksAmount;
+      policyStats.recordEviction();
+      policyStats.recordOperation();
+    }
+  }
+
+  private void onRead(AccessEvent event) {
     long itemKey = event.key();
     var existingPrefix = Optional.ofNullable(
       firstCacheScoreMinHeap.get(itemKey)).orElse(
       secondCacheScoreMinHeap.get(itemKey)
     );
     policyStats.recordOperation();
-    currentTime++;
 
     if (existingPrefix != null) {
       // prefix exist (partial hit)

@@ -56,10 +56,42 @@ public final class NBConvexPolicy implements Policy {
 
   @Override
   public void record(AccessEvent event) {
+    currentTime++;
+    switch (event.operation()) {
+      case READ:
+        onRead(event);
+        break;
+      case WRITE:
+        onWrite(event);
+        break;
+      case DELETE:
+        onDelete(event);
+      default:
+        throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+    }
+  }
+
+  private void onWrite(AccessEvent event) {
+    policyStats.recordOperation();
+    onDelete(event);
+    onRead(event);
+  }
+
+  private void onDelete(AccessEvent event) {
+    var existingPrefix = scoreMinHeap.get(event.key());
+    if (existingPrefix != null) {
+      // prefix exists, remove it
+      scoreMinHeap.remove(existingPrefix.itemKey);
+      currentCacheSize -= existingPrefix.chunksAmount;
+      policyStats.recordEviction();
+      policyStats.recordOperation();
+    }
+  }
+
+  private void onRead(AccessEvent event) {
     long itemKey = event.key();
     var existingPrefix = scoreMinHeap.get(itemKey);
     policyStats.recordOperation();
-    currentTime++;
 
     if (existingPrefix != null) {
       // prefix exist (partial hit)

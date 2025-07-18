@@ -22,6 +22,7 @@ import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
+
 /**
  * The key and metadata for accessing a cache.
  *
@@ -30,6 +31,12 @@ import static com.google.common.base.Preconditions.checkArgument;
 @Immutable
 public class AccessEvent {
   private final long key;
+
+  public enum Operation {
+    READ,
+    WRITE,
+    DELETE
+  }
 
   private AccessEvent(long key) {
     this.key = key;
@@ -80,8 +87,20 @@ public class AccessEvent {
   /**
    * Returns the requested item size of the entry.
    */
-  public int itemSize() {
+  public long itemSize() {
     return 0;
+  }
+
+  /**
+   * Returns the operation type of the entry.
+   * <p>
+   * The operation is a hint for the policy to determine the type of access,
+   *  such as read(0), write(1) or delete(2).
+   *
+   * @return the operation type, the default is 0 (read)
+   */
+  public Operation operation() {
+    return Operation.READ;
   }
 
   @Override
@@ -132,10 +151,12 @@ public class AccessEvent {
   }
 
   /**
-   * Returns an event for the given key, size and delay.
+   * Returns an event for the given key, operation, size and delay.
+   * Operation is a hint for the policy to determine the type of access,
+   *  such as read(0), write(1) or delete(2).
    */
-  public static AccessEvent forKeyAndSizeAndDelay(long key, int itemSize, double underflowDelay) {
-    return new DelayAccessEvent(key, itemSize, underflowDelay);
+  public static AccessEvent forKeyAndOperationAndSizeAndDelay(long key, int operation, long itemSize, double underflowDelay) {
+    return new DelayAccessEvent(key, operation, itemSize, underflowDelay);
   }
 
   /**
@@ -189,14 +210,17 @@ public class AccessEvent {
   }
 
   private static final class DelayAccessEvent extends AccessEvent {
-    private final int itemSize;
+    private final long itemSize;
+    private final int operation;
     private final double underflowDelay;
 
-    DelayAccessEvent(long key, int itemSize, double underflowDelay) {
+    DelayAccessEvent(long key, int operation, long itemSize, double underflowDelay) {
       super(key);
       this.itemSize = itemSize;
+      this.operation = operation;
       this.underflowDelay = underflowDelay;
       checkArgument(itemSize > 0);
+      checkArgument(operation >= 0 && operation <= 2);
       checkArgument(underflowDelay >= 0);
     }
 
@@ -206,8 +230,22 @@ public class AccessEvent {
     }
 
     @Override
-    public int itemSize() {
+    public long itemSize() {
       return itemSize;
+    }
+
+    @Override
+    public Operation operation() {
+      switch (operation) {
+        case 0:
+          return Operation.READ;
+        case 1:
+          return Operation.WRITE;
+        case 2:
+          return Operation.DELETE;
+        default:
+          throw new IllegalArgumentException("Unsupported operation: " + operation);
+      }
     }
   }
 }

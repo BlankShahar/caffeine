@@ -42,9 +42,10 @@ public final class NonBinaryTraceReader extends TextTraceReader {
       .map(line -> line.split(",", 3))
       .map(array -> {
         long key = Long.parseLong(array[0]);
-        int itemSize = Integer.parseInt(array[1]);
-        double underflowDelay = Double.parseDouble(array[2]);
-        return AccessEvent.forKeyAndSizeAndDelay(key, itemSize, underflowDelay);
+        int operation = Integer.parseInt(array[1]);
+        long itemSize = Long.parseLong(array[2]);
+        double underflowDelay = Double.parseDouble(array[3]);
+        return AccessEvent.forKeyAndOperationAndSizeAndDelay(key, operation, itemSize, underflowDelay);
       });
   }
 }

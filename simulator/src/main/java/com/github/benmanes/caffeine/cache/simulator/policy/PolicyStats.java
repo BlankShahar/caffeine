@@ -171,7 +171,7 @@ public class PolicyStats {
     totalLatency += latency;
   }
 
-  public void recordWeightedHit(int weight) {
+  public void recordWeightedHit(long weight) {
     hitsWeight += weight;
     recordHit();
   }
@@ -200,7 +200,7 @@ public class PolicyStats {
     missCount += misses;
   }
 
-  public void recordWeightedMiss(int weight) {
+  public void recordWeightedMiss(long weight) {
     missesWeight += weight;
     recordMiss();
   }
