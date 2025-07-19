@@ -39,7 +39,7 @@ public final class NonBinaryTraceReader extends TextTraceReader {
   @Override
   public Stream<AccessEvent> events() {
     return lines()
-      .map(line -> line.split(",", 3))
+      .map(line -> line.split(",", 4))
       .map(array -> {
         long key = Long.parseLong(array[0]);
         int operation = Integer.parseInt(array[1]);
