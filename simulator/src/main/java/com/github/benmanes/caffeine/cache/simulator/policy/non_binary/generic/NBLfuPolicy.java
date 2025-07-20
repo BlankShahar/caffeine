@@ -136,7 +136,7 @@ public final class NBLfuPolicy implements Policy {
       extendPrefix(prefix);
     }
 
-    if (prefix.isFull()) return;
+    if (prefix.isFull() || maximumCacheSize == 0) return;
 
     Prefix victim;
     do {

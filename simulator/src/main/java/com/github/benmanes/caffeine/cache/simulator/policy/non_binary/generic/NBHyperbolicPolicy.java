@@ -136,7 +136,7 @@ public final class NBHyperbolicPolicy implements Policy {
     while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
       extendPrefix(prefix);
     }
-    if (prefix.isFull()) return;
+    if (prefix.isFull() || maximumCacheSize == 0) return;
 
     Prefix victim;
     do {

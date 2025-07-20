@@ -129,7 +129,8 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     recordRequestStatistics(prefix, sourceDelay);
     handleRequestsFrequency(prefix);
     updateParameters(sourceDelay);
-    waterFill(prefix);
+
+    if (maximumCacheSize > 0) waterFill(prefix);
   }
 
   private void handleRequestsFrequency(Prefix prefix) {

@@ -127,6 +127,8 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     if (event.operation() == READ) recordDelayStats(p, event.retrievalDelay());
     updateParameters(event.retrievalDelay());
 
+    if (maximumCacheSize == 0) return;
+
     /* routing logic */
     if (maxCacheLFU == 0 || heapLRU.contains(key)) {
       waterFillLru(p);
