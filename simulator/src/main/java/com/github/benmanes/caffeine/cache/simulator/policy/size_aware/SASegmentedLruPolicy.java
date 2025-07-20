@@ -9,6 +9,7 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
 @Policy.PolicySpec(name = "size-aware.SegmentedLRU")
@@ -100,23 +101,30 @@ public final class SASegmentedLruPolicy implements Policy {
     if (node == null) {
       long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
       onMiss(event.key(), event.retrievalDelay(), chunksAmount);
-      double latency = calculateLatency(
-        event.retrievalDelay(),
-        event.itemSize() * Consts.CHUNK_SIZE,
-        0,
-        Consts.BANDWIDTH
-      );
-      policyStats.addLatency(latency);
+
+      if (event.operation() == READ) {
+        policyStats.addDelay(event.retrievalDelay());
+        double latency = calculateLatency(
+          event.retrievalDelay(),
+          event.itemSize() * Consts.CHUNK_SIZE,
+          0,
+          Consts.BANDWIDTH
+        );
+        policyStats.addLatency(latency);
+      }
 
     } else {
       onHit(node);
-      double latency = calculateLatency(
-        event.retrievalDelay(),
-        event.itemSize() * Consts.CHUNK_SIZE,
-        event.itemSize() * Consts.CHUNK_SIZE,
-        Consts.BANDWIDTH
-      );
-      policyStats.addLatency(latency);
+
+      if (event.operation() == READ) {
+        double latency = calculateLatency(
+          event.retrievalDelay(),
+          event.itemSize() * Consts.CHUNK_SIZE,
+          event.itemSize() * Consts.CHUNK_SIZE,
+          Consts.BANDWIDTH
+        );
+        policyStats.addLatency(latency);
+      }
     }
   }
 
@@ -154,8 +162,6 @@ public final class SASegmentedLruPolicy implements Policy {
    * Handle a cache miss by inserting a new node in probation (if it fits).
    */
   private void onMiss(long key, double retrievalDelay, long itemSize) {
-    policyStats.addDelay(retrievalDelay);
-
     // If item is bigger than the entire probation region, skip
     if (itemSize > maxProbationSize) {
       policyStats.recordOperation(); // no insert

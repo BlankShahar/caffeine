@@ -31,6 +31,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 import static com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimber.Adaptation.Type.DECREASE_WINDOW;
 import static com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimber.Adaptation.Type.INCREASE_WINDOW;
@@ -148,14 +149,22 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     if (node == null) {
       onMiss(key, weight);
       policyStats.recordWeightedMiss(weight);
-      policyStats.addDelay(event.retrievalDelay());
-      double latency = calculateLatency(event.retrievalDelay(), event.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
-      policyStats.addLatency(latency);
+
+      if (event.operation() == READ) {
+        policyStats.addDelay(event.retrievalDelay());
+        double latency = calculateLatency(event.retrievalDelay(), event.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
+        policyStats.addLatency(latency);
+      }
+
     } else {
       queue = node.queue;
       policyStats.recordWeightedHit(weight);
-      double latency = calculateLatency(event.retrievalDelay(), event.itemSize() * Consts.CHUNK_SIZE, event.itemSize() * Consts.CHUNK_SIZE, Consts.BANDWIDTH);
-      policyStats.addLatency(latency);
+
+      if (event.operation() == READ) {
+        double latency = calculateLatency(event.retrievalDelay(), event.itemSize() * Consts.CHUNK_SIZE, event.itemSize() * Consts.CHUNK_SIZE, Consts.BANDWIDTH);
+        policyStats.addLatency(latency);
+      }
+
       if (queue == WINDOW) {
         onWindowHit(node);
       } else if (queue == PROBATION) {

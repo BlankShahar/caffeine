@@ -8,6 +8,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
 @Policy.PolicySpec(name = "size-aware.LRFU")
@@ -73,22 +74,26 @@ public final class SALrfuPolicy implements Policy {
       node = new Node(event.key(), chunksAmount, currentTime);
     }
     if (!heap.contains(node.key)) {
-      stats.addDelay(event.retrievalDelay());
-      double latency = calculateLatency(
-        event.retrievalDelay(),
-        event.itemSize() * Consts.CHUNK_SIZE,
-        0,
-        Consts.BANDWIDTH
-      );
-      stats.addLatency(latency);
+      if (event.operation() == READ) {
+        stats.addDelay(event.retrievalDelay());
+        double latency = calculateLatency(
+          event.retrievalDelay(),
+          event.itemSize() * Consts.CHUNK_SIZE,
+          0,
+          Consts.BANDWIDTH
+        );
+        stats.addLatency(latency);
+      }
     } else {
-      double latency = calculateLatency(
-        event.retrievalDelay(),
-        event.itemSize() * Consts.CHUNK_SIZE,
-        event.itemSize() * Consts.CHUNK_SIZE,
-        Consts.BANDWIDTH
-      );
-      stats.addLatency(latency);
+      if (event.operation() == READ) {
+        double latency = calculateLatency(
+          event.retrievalDelay(),
+          event.itemSize() * Consts.CHUNK_SIZE,
+          event.itemSize() * Consts.CHUNK_SIZE,
+          Consts.BANDWIDTH
+        );
+        stats.addLatency(latency);
+      }
     }
 
     updateScore(node);

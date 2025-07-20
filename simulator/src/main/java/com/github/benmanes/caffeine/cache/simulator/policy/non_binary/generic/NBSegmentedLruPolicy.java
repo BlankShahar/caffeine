@@ -15,6 +15,7 @@ import java.util.ArrayDeque;
 import java.util.Optional;
 import java.util.Queue;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
 @Policy.PolicySpec(name = "non-binary.SegmentedLRU")
@@ -110,12 +111,14 @@ public final class NBSegmentedLruPolicy implements Policy {
       // We put new items in the probation segment
     } else prefix.lastRequestTime = currentTime;
 
-    if (probationHeap.contains(itemKey) || protectedHeap.contains(itemKey))
-      recordRequestStatistics(prefix, event.retrievalDelay());
-    else {
-      policyStats.addDelay(event.retrievalDelay());
-      double latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
-      policyStats.addLatency(latency);
+    if (event.operation() == READ) {
+      if (probationHeap.contains(itemKey) || protectedHeap.contains(itemKey))
+        recordRequestStatistics(prefix, event.retrievalDelay());
+      else {
+        policyStats.addDelay(event.retrievalDelay());
+        double latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
+        policyStats.addLatency(latency);
+      }
     }
     handleRequestsFrequency(prefix);
 

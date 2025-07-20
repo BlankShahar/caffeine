@@ -14,6 +14,7 @@ import com.typesafe.config.Config;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
 
@@ -82,17 +83,17 @@ public final class NBLruPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exist (partial hit)
       existingPrefix.lastRequestTime = currentTime;
-      onRequest(existingPrefix, event.retrievalDelay());
+      onRequest(existingPrefix, event.retrievalDelay(), event.operation());
     } else {
       // prefix missing (full miss)
       long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
       var newPrefix = new Prefix(itemKey, chunksAmount, source, currentTime);
-      onRequest(newPrefix, event.retrievalDelay());
+      onRequest(newPrefix, event.retrievalDelay(), event.operation());
     }
   }
 
-  private void onRequest(Prefix prefix, double sourceDelay) {
-    recordRequestStatistics(prefix, sourceDelay);
+  private void onRequest(Prefix prefix, double sourceDelay, AccessEvent.Operation operation) {
+    if (operation == READ) recordRequestStatistics(prefix, sourceDelay);
     handleRequestsFrequency(prefix);
     waterFill(prefix);
   }

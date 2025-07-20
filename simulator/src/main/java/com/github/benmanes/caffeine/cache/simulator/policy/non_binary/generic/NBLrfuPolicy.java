@@ -11,6 +11,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Lo
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
 @Policy.PolicySpec(name = "non-binary.LRFU")
@@ -76,16 +77,16 @@ public final class NBLrfuPolicy implements Policy {
 
     if (existingPrefix != null) {
       existingPrefix.lastRequestTime = currentTime;
-      onRequest(existingPrefix, event.retrievalDelay());
+      onRequest(existingPrefix, event.retrievalDelay(), event.operation());
     } else {
       long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
       var newPrefix = new Prefix(itemKey, chunksAmount, source, currentTime);
-      onRequest(newPrefix, event.retrievalDelay());
+      onRequest(newPrefix, event.retrievalDelay(), event.operation());
     }
   }
 
-  private void onRequest(Prefix prefix, double sourceDelay) {
-    recordRequestStatistics(prefix, sourceDelay);
+  private void onRequest(Prefix prefix, double sourceDelay, AccessEvent.Operation operation) {
+    if (operation == READ) recordRequestStatistics(prefix, sourceDelay);
     prefix.updateScore(currentTime);
     waterFill(prefix);
   }

@@ -16,6 +16,7 @@ import java.util.ArrayDeque;
 import java.util.Optional;
 import java.util.Queue;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 import static com.google.common.base.Preconditions.checkState;
 
@@ -151,29 +152,35 @@ public final class NBArcPolicy implements Policy {
     // System.out.println(currentTime);
     switch (prefix.queue) {
       case T1:
-        recordRequestStatistics(prefix, event.retrievalDelay());
+        if (event.operation() == READ) recordRequestStatistics(prefix, event.retrievalDelay());
         onHitT1(prefix);
         break;
       case T2:
-        recordRequestStatistics(prefix, event.retrievalDelay());
+        if (event.operation() == READ) recordRequestStatistics(prefix, event.retrievalDelay());
         onHitT2(prefix);
         break;
       case B1:
-        policyStats.addDelay(event.retrievalDelay());
-        latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
-        policyStats.addLatency(latency);
+        if (event.operation() == READ) {
+          policyStats.addDelay(event.retrievalDelay());
+          latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
+          policyStats.addLatency(latency);
+        }
         onHitB1(prefix);
         break;
       case B2:
-        policyStats.addDelay(event.retrievalDelay());
-        latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
-        policyStats.addLatency(latency);
+        if (event.operation() == READ) {
+          policyStats.addDelay(event.retrievalDelay());
+          latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
+          policyStats.addLatency(latency);
+        }
         onHitB2(prefix);
         break;
       case NONE:
-        policyStats.addDelay(event.retrievalDelay());
-        latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
-        policyStats.addLatency(latency);
+        if (event.operation() == READ) {
+          policyStats.addDelay(event.retrievalDelay());
+          latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
+          policyStats.addLatency(latency);
+        }
         onMiss(prefix);
         break;
     }

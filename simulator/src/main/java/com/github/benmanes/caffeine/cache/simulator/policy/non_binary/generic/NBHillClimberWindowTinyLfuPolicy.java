@@ -13,6 +13,7 @@ import com.typesafe.config.Config;
 
 import java.util.Optional;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 
 /**
@@ -122,7 +123,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     /* stats bookkeeping */
     p.lastAccessTime = now;
     p.requestCount++;
-    recordDelayStats(p, event.retrievalDelay());
+    if (event.operation() == READ) recordDelayStats(p, event.retrievalDelay());
     updateParameters(event.retrievalDelay());
 
     /* routing logic */

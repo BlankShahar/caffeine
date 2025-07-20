@@ -10,6 +10,7 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
+import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
 import static com.google.common.base.Preconditions.checkState;
 
@@ -114,9 +115,12 @@ public final class SAArcPolicy implements Policy {
 
   private void onHitB1(Node n, AccessEvent e) {
     stats.recordMiss();
-    stats.addDelay(e.retrievalDelay());
-    double latency = calculateLatency(e.retrievalDelay(), e.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
-    stats.addLatency(latency);
+
+    if (e.operation() == READ) {
+      stats.addDelay(e.retrievalDelay());
+      double latency = calculateLatency(e.retrievalDelay(), e.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
+      stats.addLatency(latency);
+    }
 
     p = Math.min(maximumCacheSize, p + n.size);
     if (n.size <= (maximumCacheSize - sizeT1)) {
@@ -129,9 +133,11 @@ public final class SAArcPolicy implements Policy {
 
   private void onHitB2(Node n, AccessEvent e) {
     stats.recordMiss();
-    stats.addDelay(e.retrievalDelay());
-    double latency = calculateLatency(e.retrievalDelay(), e.itemSize() * Consts.CHUNK_SIZE,0, Consts.BANDWIDTH);
-    stats.addLatency(latency);
+    if (e.operation() == READ) {
+      stats.addDelay(e.retrievalDelay());
+      double latency = calculateLatency(e.retrievalDelay(), e.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
+      stats.addLatency(latency);
+    }
 
     p = Math.max(0, p - n.size);
     if (n.size <= (maximumCacheSize - sizeT1)) {
@@ -154,10 +160,12 @@ public final class SAArcPolicy implements Policy {
   private void onMiss(AccessEvent event) {
     long size = event.itemSize(); // (long) Math.ceil(e.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
     stats.recordMiss();
-    stats.addDelay(event.retrievalDelay());
 
-    double latency = calculateLatency(event.retrievalDelay(), event.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
-    stats.addLatency(latency);
+    if (event.operation() == READ) {
+      stats.addDelay(event.retrievalDelay());
+      double latency = calculateLatency(event.retrievalDelay(), event.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
+      stats.addLatency(latency);
+    }
 
     if (size > maximumCacheSize) {
       return;
