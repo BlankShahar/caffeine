@@ -37,6 +37,7 @@ public final class SALfuPolicy implements Policy {
         break;
       case DELETE:
         onDelete(event);
+        break;
       default:
         throw new IllegalArgumentException("Unsupported operation: " + event.operation());
     }

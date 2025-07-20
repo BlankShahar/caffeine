@@ -90,7 +90,7 @@ public final class ClairvoyantPolicy implements Policy {
   /**
    * Performs the cache operations for the given key.
    */
-  private void process(long key, double hitPenalty, double missPenalty, double retrievalDelay, int itemSize) {
+  private void process(long key, double hitPenalty, double missPenalty, double retrievalDelay, long itemSize) {
     IntPriorityQueue times = accessTimes.get(key);
 
     int lastAccess = times.dequeueInt();

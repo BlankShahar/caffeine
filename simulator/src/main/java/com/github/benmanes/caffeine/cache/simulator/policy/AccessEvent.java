@@ -219,7 +219,7 @@ public class AccessEvent {
       this.itemSize = itemSize;
       this.operation = operation;
       this.underflowDelay = underflowDelay;
-      checkArgument(itemSize > 0);
+      checkArgument(itemSize >= 0);
       checkArgument(operation >= 0 && operation <= 2);
       checkArgument(underflowDelay >= 0);
     }
