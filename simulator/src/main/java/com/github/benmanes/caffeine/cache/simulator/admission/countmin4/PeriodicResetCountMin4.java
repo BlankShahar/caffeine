@@ -83,8 +83,8 @@ public final class PeriodicResetCountMin4 extends CountMin4 {
 
     @Var int count = 0;
     for (int i = 0; i < table.size(); i++) {
-      count += Long.bitCount(table.get(i) & ONE_MASK);
-      table.put(i, (table.get(i) >>> 1) & RESET_MASK);
+      count += Long.bitCount(table.getOrDefault(i, 0L) & ONE_MASK);
+      table.put(i, (table.getOrDefault(i, 0L) >>> 1) & RESET_MASK);
     }
     additions = (additions - (count >>> 2)) >>> 1;
     doorkeeper.clear();
