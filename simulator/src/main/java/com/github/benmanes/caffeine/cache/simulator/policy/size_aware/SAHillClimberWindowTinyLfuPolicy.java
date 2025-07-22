@@ -139,7 +139,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     policyStats.recordOperation();
     Node node = data.get(key);
     if (sizeData >= (maximumSize >>> 1)) {
-      sketch.ensureCapacity(data.size());
+      sketch.ensureCapacity(2_000_000);
       if ((sizeData + weight) >= maximumSize) {
         isFull = true;
       }
