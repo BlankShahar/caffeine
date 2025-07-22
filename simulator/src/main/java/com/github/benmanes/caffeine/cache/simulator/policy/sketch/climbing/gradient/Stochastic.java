@@ -53,7 +53,7 @@ public final class Stochastic extends AbstractClimber {
   public Stochastic(Config config) {
     var settings = new StochasticSettings(config);
     int maximumSize = Math.toIntExact(settings.maximumSize());
-    sampleSize = (int) (settings.percentSample() * maximumSize);
+    sampleSize = (long) (settings.percentSample() * maximumSize);
     stepSize = (int) (settings.percentPivot() * maximumSize);
     acceleration = settings.acceleration();
     beta = settings.beta();

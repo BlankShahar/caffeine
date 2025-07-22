@@ -25,7 +25,7 @@ import static com.google.common.base.Preconditions.checkState;
 public abstract class AbstractClimber implements HillClimber {
   private static final boolean debug = false;
 
-  protected int sampleSize;
+  protected long sampleSize;
   protected int hitsInMain;
   protected int hitsInWindow;
   protected int hitsInSample;

@@ -49,7 +49,7 @@ public final class IncrementalResetCountMin4 extends CountMin4 {
     }
 
     int i = cursor & tableMask;
-    table[i] = (table[i] >>> 1) & RESET_MASK;
+    table.put(i, (table.get(i) >>> 1) & RESET_MASK);
 
     cursor++;
     additions = 0;

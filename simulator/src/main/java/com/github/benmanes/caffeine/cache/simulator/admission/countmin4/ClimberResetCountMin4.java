@@ -50,7 +50,7 @@ public final class ClimberResetCountMin4 extends CountMin4 {
   @Override
   protected void ensureCapacity(long maximumSize) {
     super.ensureCapacity(maximumSize);
-    period = (maximumSize == 0) ? 10 : (10 * table.length);
+    period = (maximumSize == 0) ? 10 : (10 * table.size());
     if (period <= 0) {
       period = Integer.MAX_VALUE;
     }
@@ -91,9 +91,9 @@ public final class ClimberResetCountMin4 extends CountMin4 {
     }
 
     @Var int count = 0;
-    for (int i = 0; i < table.length; i++) {
-      count += Long.bitCount(table[i] & ONE_MASK);
-      table[i] = (table[i] >>> 1) & RESET_MASK;
+    for (int i = 0; i < table.size(); i++) {
+      count += Long.bitCount(table.get(i) & ONE_MASK);
+      table.put(i, (table.get(i) >>> 1) & RESET_MASK);
     }
     additions = (additions >>> 1) - (count >>> 2);
     doorkeeper.clear();
