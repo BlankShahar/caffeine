@@ -22,9 +22,9 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Tim
 public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
   final Queue<Long> requests;
   static long currentTime;
-  final long maximumCacheSize; // in chunks
+  final long maximumCacheSize;
   long firstCacheSize, secondCacheSize;
-  long currentFirstCacheSize, currentSecondCacheSize; // in chunks
+  long currentFirstCacheSize, currentSecondCacheSize;
   final long REFINEMENT_INTERVAL;
   final double STEP_SIZE;
   double q, ratio;
@@ -90,7 +90,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exists, remove it
       firstCacheScoreMinHeap.remove(existingPrefix.itemKey);
-      currentFirstCacheSize -= existingPrefix.chunksAmount;
+      currentFirstCacheSize -= existingPrefix.currentSize;
       policyStats.recordEviction();
       policyStats.recordOperation();
     }
@@ -99,7 +99,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exists, remove it
       secondCacheScoreMinHeap.remove(existingPrefix.itemKey);
-      currentSecondCacheSize -= existingPrefix.chunksAmount;
+      currentSecondCacheSize -= existingPrefix.currentSize;
       policyStats.recordEviction();
       policyStats.recordOperation();
     }
@@ -119,8 +119,8 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
       onRequest(existingPrefix, event.retrievalDelay());
     } else {
       // prefix missing (full miss)
-      long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
-      var newPrefix = new Prefix(itemKey, chunksAmount, source, currentTime);
+      long currentSize = event.itemSize();
+      var newPrefix = new Prefix(itemKey, currentSize, source, currentTime);
       onRequest(newPrefix, event.retrievalDelay());
     }
   }
@@ -152,19 +152,11 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private void recordRequestStatistics(Prefix old, double sourceDelay) {
-    // The ideal prefix size - the size that gives "no delay"/"all the item is cached" illusion
-    double idealSize = Math.min(old.fullItemSizeInMB(), sourceDelay * Consts.BANDWIDTH);
-    long idealChunksAmount = (long) Math.ceil(idealSize / Consts.CHUNK_SIZE);
-
-    // Chunk Hit Rate
-    policyStats.addHits(old.chunksAmount);
-    policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
-
     // Total delay
     double underflowDelay = calculateDelay(sourceDelay, old);
     policyStats.addDelay(underflowDelay);
 
-    double latency = calculateLatency(sourceDelay, old.fullItemSizeInMB(), old.sizeInMB(), Consts.BANDWIDTH);
+    double latency = calculateLatency(sourceDelay, old.fullItemSize(), old.currentSize(), Consts.BANDWIDTH);
     policyStats.addLatency(latency);
   }
 
@@ -357,7 +349,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
    * @return the delay in seconds
    */
   private static double calculateDelay(double sourceDelay, Prefix prefix) {
-    return TimeCalculations.calculateUnderflowDelay(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
+    return TimeCalculations.calculateUnderflowDelay(sourceDelay, prefix.fullItemSize(), prefix.currentSize(), Consts.BANDWIDTH);
   }
 
   public int comparePrefixesFirstCache(long prefixKey1, long prefixKey2) {
@@ -394,20 +386,20 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   static public class Prefix {
-    final long itemKey, fullItemChunksAmount;
+    final long itemKey, fullItemSize;
     final Source source;
-    long chunksAmount;
+    long currentSize;
     long requestsCountInPeriod;
     long lastRequestTime;
     long firstCacheChunksAmount, secondCacheChunksAmount;
 
-    public Prefix(long itemKey, long fullItemChunksAmount, Source source, long currentTime) {
+    public Prefix(long itemKey, long fullItemSize, Source source, long currentTime) {
       this.itemKey = itemKey;
-      this.fullItemChunksAmount = fullItemChunksAmount;
+      this.fullItemSize = fullItemSize;
       this.source = source;
       this.requestsCountInPeriod = 0;
       this.lastRequestTime = currentTime;
-      this.chunksAmount = 0;
+      this.currentSize = 0;
       this.firstCacheChunksAmount = 0;
       this.secondCacheChunksAmount = 0;
     }
@@ -415,7 +407,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     public double lfuScore() {
       // Idea - frequency times the probability of not experiencing delay
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        sizeInMB(),
+        currentSize(),
         Consts.BANDWIDTH
       );
       return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
@@ -427,7 +419,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
       }
 
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        sizeInMB() + Consts.CHUNK_SIZE,
+        currentSize() + Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
       return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
@@ -439,7 +431,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
       }
 
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        sizeInMB() - Consts.CHUNK_SIZE,
+        currentSize() - Consts.CHUNK_SIZE,
         Consts.BANDWIDTH
       );
       return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
@@ -448,19 +440,19 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     public double pipelineFirstCacheScore() {
       // Idea - frequency times recency times the probability of not experiencing delay
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        firstCacheChunksAmount * Consts.CHUNK_SIZE,
+        firstCacheChunksAmount,
         Consts.BANDWIDTH
       );
       return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public double pipelineFirstCacheScoreAfterInsertion() {
-      if (firstCacheChunksAmount == fullItemChunksAmount) {
+      if (firstCacheChunksAmount == fullItemSize) {
         return 0; // 1-CDF value is 0
       }
 
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        (firstCacheChunksAmount + 1) * Consts.CHUNK_SIZE,
+        (firstCacheChunksAmount + 1),
         Consts.BANDWIDTH
       );
       return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
@@ -472,7 +464,7 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
       }
 
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        (firstCacheChunksAmount - 1) * Consts.CHUNK_SIZE,
+        (firstCacheChunksAmount - 1),
         Consts.BANDWIDTH
       );
       return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
@@ -499,47 +491,47 @@ public final class WBNBHillClimberWindowTinyLfuPolicy implements Policy {
     }
 
     public void insertChunkToFirstCache() {
-      if (firstCacheChunksAmount < fullItemChunksAmount) {
+      if (firstCacheChunksAmount < fullItemSize) {
         firstCacheChunksAmount++;
-        chunksAmount++;
+        currentSize++;
       }
     }
 
     public void removeChunkFromFirstCache() {
       if (firstCacheChunksAmount > 0) {
         firstCacheChunksAmount--;
-        chunksAmount--;
+        currentSize--;
       }
     }
 
     public void insertChunkToSecondCache() {
-      if (secondCacheChunksAmount < fullItemChunksAmount) {
+      if (secondCacheChunksAmount < fullItemSize) {
         secondCacheChunksAmount++;
-        chunksAmount++;
+        currentSize++;
       }
     }
 
     public void removeChunkFromSecondCache() {
       if (secondCacheChunksAmount > 0) {
         secondCacheChunksAmount--;
-        chunksAmount--;
+        currentSize--;
       }
     }
 
-    public double sizeInMB() {
-      return chunksAmount * Consts.CHUNK_SIZE;
+    public double currentSize() {
+      return currentSize;
     }
 
-    public double fullItemSizeInMB() {
-      return fullItemChunksAmount * Consts.CHUNK_SIZE;
+    public double fullItemSize() {
+      return fullItemSize;
     }
 
     public boolean isFull() {
-      return chunksAmount == fullItemChunksAmount;
+      return currentSize == fullItemSize;
     }
 
     public boolean isEmpty() {
-      return chunksAmount == 0;
+      return currentSize == 0;
     }
 
     public int pipelineFirstCacheCompareTo(Prefix other) {

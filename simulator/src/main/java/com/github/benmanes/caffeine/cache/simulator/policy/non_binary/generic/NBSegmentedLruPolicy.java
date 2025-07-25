@@ -84,7 +84,7 @@ public final class NBSegmentedLruPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exists, remove it
       probationHeap.remove(existingPrefix.itemKey);
-      currentProbationSize -= existingPrefix.chunksAmount;
+      currentProbationSize -= existingPrefix.currentSize;
       policyStats.recordEviction();
       policyStats.recordOperation();
     }
@@ -93,7 +93,7 @@ public final class NBSegmentedLruPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exists, remove it
       protectedHeap.remove(existingPrefix.itemKey);
-      currentProtectedSize -= existingPrefix.chunksAmount;
+      currentProtectedSize -= existingPrefix.currentSize;
       policyStats.recordEviction();
       policyStats.recordOperation();
     }
@@ -106,8 +106,8 @@ public final class NBSegmentedLruPolicy implements Policy {
 
     if (prefix == null) {
       // First time we see this item
-      long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
-      prefix = new Prefix(itemKey, chunksAmount, source, currentTime);
+      long currentSize = event.itemSize();
+      prefix = new Prefix(itemKey, currentSize, source, currentTime);
       prefix.isInProtected = false;
       // We put new items in the probation segment
     } else prefix.lastRequestTime = currentTime;
@@ -117,14 +117,14 @@ public final class NBSegmentedLruPolicy implements Policy {
         recordRequestStatistics(prefix, event.retrievalDelay());
       else {
         policyStats.addDelay(event.retrievalDelay());
-        double latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
+        double latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSize(), 0, Consts.BANDWIDTH);
         policyStats.addLatency(latency);
       }
     }
     handleRequestsFrequency(prefix);
 
     // On second reference, if not in protected, we attempt promotion
-    if (!prefix.isInProtected && prefix.chunksAmount > 0) promoteToProtected(prefix);
+    if (!prefix.isInProtected && prefix.currentSize > 0) promoteToProtected(prefix);
 
     // Attempt partial caching expansions
     waterFill(prefix);
@@ -136,35 +136,45 @@ public final class NBSegmentedLruPolicy implements Policy {
    * we do not promote it (same as original logic).
    */
   private void promoteToProtected(Prefix prefix) {
-    if (prefix.chunksAmount > maxProtectedSize) return;
+    if (prefix.currentSize > maxProtectedSize) return;
 
     // Evict/demote from protected if necessary to make room
-    while (prefix.chunksAmount + currentProtectedSize > maxProtectedSize && !protectedHeap.isEmpty()) {
+    while (prefix.currentSize + currentProtectedSize > maxProtectedSize && !protectedHeap.isEmpty()) {
       Prefix demote = protectedHeap.extractMin().value();
       demote.isInProtected = false;
-      currentProtectedSize -= demote.chunksAmount;
+      currentProtectedSize -= demote.currentSize;
 
-      if (demote.chunksAmount > maxProbationSize) continue;
+      if (demote.currentSize > maxProbationSize) continue;
       // Free up space in probation if needed
-      while (demote.chunksAmount + currentProbationSize > maxProbationSize) {
+      while (demote.currentSize + currentProbationSize > maxProbationSize) {
         Prefix eviction = probationHeap.extractMin().value();
-        currentProbationSize -= eviction.chunksAmount;
-        eviction.chunksAmount = 0;
+        currentProbationSize -= eviction.currentSize;
+        eviction.currentSize = 0;
         policyStats.recordEviction();
       }
       // Move demoted item to probation
-      currentProbationSize += demote.chunksAmount;
+      currentProbationSize += demote.currentSize;
       probationHeap.upsert(demote.itemKey, demote);
     }
+
+    assert currentProtectedSize <= maxProtectedSize : "Protected size exceeds maximum protected size (current time: " + currentTime + ")";
+    assert currentProtectedSize >= 0 : "Protected size cannot be negative (current time: " + currentTime + ")";
+    assert currentProbationSize <= maxProbationSize : "Probation size exceeds maximum probation size (current time: " + currentTime + ")";
+    assert currentProbationSize >= 0 : "Probation size cannot be negative (current time: " + currentTime + ")";
 
     // Actually promote
     prefix.isInProtected = true;
     if (probationHeap.contains(prefix.itemKey)) {
       probationHeap.remove(prefix.itemKey);
-      currentProbationSize -= prefix.chunksAmount;
+      currentProbationSize -= prefix.currentSize;
     }
     protectedHeap.upsert(prefix.itemKey, prefix);
-    currentProtectedSize += prefix.chunksAmount;
+    currentProtectedSize += prefix.currentSize;
+
+    assert currentProtectedSize <= maxProtectedSize : "Protected size exceeds maximum protected size (current time: " + currentTime + ")";
+    assert currentProtectedSize >= 0 : "Protected size cannot be negative (current time: " + currentTime + ")";
+    assert currentProbationSize <= maxProbationSize : "Probation size exceeds maximum probation size (current time: " + currentTime + ")";
+    assert currentProbationSize >= 0 : "Probation size cannot be negative (current time: " + currentTime + ")";
   }
 
   private void handleRequestsFrequency(Prefix prefix) {
@@ -181,16 +191,9 @@ public final class NBSegmentedLruPolicy implements Policy {
   }
 
   private void recordRequestStatistics(Prefix prefix, double sourceDelay) {
-    double idealSizeMB = Math.min(prefix.fullItemSizeInMB(), sourceDelay * Consts.BANDWIDTH);
-    long idealChunks = (long) Math.ceil(idealSizeMB / Consts.CHUNK_SIZE);
-
-    // Partial "hit" vs. "miss" in the sense of how many chunks are already present
-    policyStats.addHits(prefix.chunksAmount);
-    policyStats.addMisses(Math.max(0, idealChunks - prefix.chunksAmount));
-
-    double underflowDelay = TimeCalculations.calculateUnderflowDelay(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
+    double underflowDelay = TimeCalculations.calculateUnderflowDelay(sourceDelay, prefix.fullItemSize(), prefix.currentSize(), Consts.BANDWIDTH);
     policyStats.addDelay(underflowDelay);
-    double latency = calculateLatency(sourceDelay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
+    double latency = calculateLatency(sourceDelay, prefix.fullItemSize(), prefix.currentSize(), Consts.BANDWIDTH);
     policyStats.addLatency(latency);
   }
 
@@ -201,73 +204,88 @@ public final class NBSegmentedLruPolicy implements Policy {
   private void waterFill(Prefix prefix) {
     // 1) Expand as long as we are not full and haven't hit the
     //    capacity limit (probation or protected).
-    if (prefix.isInProtected) while (!prefix.isFull() && currentProtectedSize < maxProtectedSize) {
+    long addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
+    if (prefix.isInProtected)
+      while (!prefix.isFull() && currentProtectedSize + addSize <= maxProtectedSize) {
+        extendPrefix(prefix);
+        addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
+      }
+    else while (!prefix.isFull() && currentProbationSize + addSize <= maxProbationSize) {
       extendPrefix(prefix);
-    }
-    else while (!prefix.isFull() && currentProbationSize < maxProbationSize) {
-      extendPrefix(prefix);
+      addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
     }
 
-    if (prefix.isFull()) return;
+    if (prefix.isFull() || maximumCacheSize == 0) return;
 
     // 2) Possibly evict from other items (the "victim") to free space,
     //    if the new chunk would yield a bigger improvement than the victim's chunk.
     Prefix victim;
     do {
-      if (prefix.isInProtected) victim = findVictimFromProtected();
-      else victim = findVictimFromProbation();
-      if (victim == null || victim.itemKey == prefix.itemKey) break;
-
-      shrinkPrefix(victim);
       extendPrefix(prefix);
-    } while (prefix.isFull());
+
+      boolean isCacheOverflowing;
+      do {
+        if (prefix.isInProtected) victim = findVictimFromProtected();
+        else victim = findVictimFromProbation();
+        shrinkPrefix(victim);
+
+        isCacheOverflowing = prefix.isInProtected ?
+          currentProtectedSize > maxProtectedSize : currentProbationSize > maxProbationSize;
+      } while (isCacheOverflowing);
+
+    } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
   }
 
   /**
    * Remove one chunk from victim.
    */
   private void shrinkPrefix(Prefix prefix) {
-    if (prefix.isEmpty()) {
+    if (prefix.isEmpty())
       return;
-    }
-    prefix.removeChunk();
+
+    long removedSize = prefix.removeChunk();
     if (prefix.isInProtected) {
-      currentProtectedSize--;
+      currentProtectedSize -= removedSize;
 
       if (!prefix.isEmpty()) {
-        // if (protectedHeap.contains(prefix.itemKey))
         protectedHeap.upsert(prefix.itemKey, prefix);
       } else {
         protectedHeap.remove(prefix.itemKey);
         prefix.isInProtected = false;
       }
     } else {
-      currentProbationSize--;
+      currentProbationSize -= removedSize;
       if (prefix.isEmpty()) probationHeap.remove(prefix.itemKey);
       else probationHeap.upsert(prefix.itemKey, prefix);
     }
     policyStats.recordOperation();
     policyStats.recordEviction();
+
+    assert prefix.currentSize >= 0 : "Prefix size cannot be negative";
+    assert currentProtectedSize >= 0 : "Current protected cache size cannot be negative";
+    assert currentProbationSize >= 0 : "Current probation cache size cannot be negative";
   }
 
   /**
    * Add one chunk to prefix, if not full.
    */
   private void extendPrefix(Prefix prefix) {
-    if (prefix.isFull()) {
+    if (prefix.isFull())
       return;
-    }
-    prefix.insertChunk();
+
+    long addedSize = prefix.insertChunk();
 
     if (prefix.isInProtected) {
-      currentProtectedSize++;
+      currentProtectedSize += addedSize;
       protectedHeap.upsert(prefix.itemKey, prefix);
     } else {
-      currentProbationSize++;
+      currentProbationSize += addedSize;
       probationHeap.upsert(prefix.itemKey, prefix);
     }
     policyStats.recordOperation();
     policyStats.recordAdmission();
+
+    assert prefix.currentSize <= prefix.fullItemSize : "Prefix size exceeds its full size (current time: " + currentTime + ")";
   }
 
   /**
@@ -323,25 +341,25 @@ public final class NBSegmentedLruPolicy implements Policy {
    */
   static class Prefix {
     final long itemKey;
-    final long fullItemChunksAmount;
+    final long fullItemSize;
     final Source source;
-    long chunksAmount;          // how many chunks are currently cached
+    long currentSize;
     long requestsCountInPeriod;
     long lastRequestTime;
     boolean isInProtected;
 
-    Prefix(long itemKey, long fullItemChunksAmount, Source source, long currentTime) {
+    Prefix(long itemKey, long fullItemSize, Source source, long currentTime) {
       this.itemKey = itemKey;
-      this.fullItemChunksAmount = fullItemChunksAmount;
+      this.fullItemSize = fullItemSize;
       this.source = source;
       this.lastRequestTime = currentTime;
       this.requestsCountInPeriod = 0;
-      this.chunksAmount = 0;
+      this.currentSize = 0;
       this.isInProtected = false;
     }
 
     double lruScore() {
-      double prefixTxTime = TimeCalculations.calculateTransmissionTime(sizeInMB(), Consts.BANDWIDTH);
+      double prefixTxTime = TimeCalculations.calculateTransmissionTime(currentSize, Consts.BANDWIDTH);
       return recency() * (1 - source.calculateCDF(prefixTxTime));
     }
 
@@ -349,32 +367,33 @@ public final class NBSegmentedLruPolicy implements Policy {
       return 1.0 / (currentTime - lastRequestTime + 1);
     }
 
-    double sizeInMB() {
-      return chunksAmount * Consts.CHUNK_SIZE;
+    double currentSize() {
+      return currentSize;
     }
 
-    double fullItemSizeInMB() {
-      return fullItemChunksAmount * Consts.CHUNK_SIZE;
+    double fullItemSize() {
+      return fullItemSize;
     }
 
     boolean isFull() {
-      return chunksAmount == fullItemChunksAmount;
+      return currentSize == fullItemSize;
     }
 
     boolean isEmpty() {
-      return (chunksAmount == 0);
+      return (currentSize == 0);
     }
 
-    void insertChunk() {
-      if (!isFull()) {
-        chunksAmount++;
-      }
+    public long insertChunk() {
+      long addSize = Math.min(fullItemSize - currentSize, Consts.CHUNK_SIZE);
+      currentSize += addSize;
+      return addSize;
     }
 
-    void removeChunk() {
-      if (!isEmpty()) {
-        chunksAmount--;
-      }
+    public long removeChunk() {
+      long remainder = currentSize % Consts.CHUNK_SIZE;
+      long removeSize = (remainder > 0) ? remainder : Consts.CHUNK_SIZE;
+      currentSize -= removeSize;
+      return removeSize;
     }
 
     int lruCompareTo(Prefix other) {

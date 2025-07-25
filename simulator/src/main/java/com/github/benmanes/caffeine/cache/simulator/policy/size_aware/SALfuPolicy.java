@@ -62,7 +62,7 @@ public final class SALfuPolicy implements Policy {
 
   private void onRead(AccessEvent event) {
     long itemKey = event.key();
-    long itemSize = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
+    long itemSize = event.itemSize();
     double retrievalDelay = event.retrievalDelay();
 
     policyStats.recordOperation();
@@ -77,8 +77,8 @@ public final class SALfuPolicy implements Policy {
       if (event.operation() == READ) {
         double latency = calculateLatency(
           event.retrievalDelay(),
-          event.itemSize() * Consts.CHUNK_SIZE,
-          event.itemSize() * Consts.CHUNK_SIZE,
+          event.itemSize(),
+          event.itemSize(),
           Consts.BANDWIDTH
         );
         policyStats.addLatency(latency);
@@ -92,7 +92,7 @@ public final class SALfuPolicy implements Policy {
         policyStats.addDelay(retrievalDelay);
         double latency = calculateLatency(
           event.retrievalDelay(),
-          event.itemSize() * Consts.CHUNK_SIZE,
+          event.itemSize(),
           0,
           Consts.BANDWIDTH
         );
@@ -143,7 +143,7 @@ public final class SALfuPolicy implements Policy {
 
   static public class Item {
     public final long key;
-    public final long size; // in chunks
+    public final long size;
     public long frequency;
 
     public Item(long key, long size) {

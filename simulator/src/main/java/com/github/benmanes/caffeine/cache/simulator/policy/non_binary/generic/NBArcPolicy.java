@@ -82,7 +82,7 @@ public final class NBArcPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exists, remove it
       heapT1.remove(existingPrefix.itemKey);
-      sizeT1 -= existingPrefix.chunksAmount;
+      sizeT1 -= existingPrefix.currentSize;
       if (existingPrefix.isEmpty()) existingPrefix.queue = Q.NONE;
       policyStats.recordEviction();
       policyStats.recordOperation();
@@ -92,7 +92,7 @@ public final class NBArcPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exists, remove it
       heapT2.remove(existingPrefix.itemKey);
-      sizeT2 -= existingPrefix.chunksAmount;
+      sizeT2 -= existingPrefix.currentSize;
       if (existingPrefix.isEmpty()) existingPrefix.queue = Q.NONE;
       policyStats.recordEviction();
       policyStats.recordOperation();
@@ -101,7 +101,7 @@ public final class NBArcPolicy implements Policy {
     if (B1.containsKey(event.key())) {
       // prefix exists in B1, remove it
       Prefix prefix = B1.remove(event.key());
-      sizeB1 -= prefix.fullItemChunksAmount;
+      sizeB1 -= prefix.fullItemSize;
       if (prefix.isEmpty()) prefix.queue = Q.NONE;
       policyStats.recordEviction();
       policyStats.recordOperation();
@@ -110,7 +110,7 @@ public final class NBArcPolicy implements Policy {
     if (B2.containsKey(event.key())) {
       // prefix exists in B1, remove it
       Prefix prefix = B2.remove(event.key());
-      sizeB2 -= prefix.fullItemChunksAmount;
+      sizeB2 -= prefix.fullItemSize;
       if (prefix.isEmpty()) prefix.queue = Q.NONE;
       policyStats.recordEviction();
       policyStats.recordOperation();
@@ -122,17 +122,17 @@ public final class NBArcPolicy implements Policy {
     long itemKey = event.key();
     Prefix prefix = Optional.ofNullable(heapT1.get(itemKey)).orElse(heapT2.get(itemKey));
     if (prefix == null) {
-      long chunksAmount = event.itemSize();
-      prefix = new Prefix(itemKey, chunksAmount, source, currentTime);
+      long currentSize = event.itemSize();
+      prefix = new Prefix(itemKey, currentSize, source, currentTime);
     } else {
       prefix.lastRequestTime = currentTime;
     }
 
     handleRequestsFrequency(prefix);
 
-//    if (heapT1.valuesMap.values().stream().anyMatch(p -> p.chunksAmount == 0))
+//    if (heapT1.valuesMap.values().stream().anyMatch(p -> p.currentSize == 0))
 //      throw new IllegalStateException("Empty prefix in T1: " + currentTime);
-//    if (heapT2.valuesMap.values().stream().anyMatch(p -> p.chunksAmount == 0))
+//    if (heapT2.valuesMap.values().stream().anyMatch(p -> p.currentSize == 0))
 //      throw new IllegalStateException("Empty prefix in T2: " + currentTime);
 //
 //    if (sizeT1 > maximumCacheSize - p)
@@ -145,8 +145,8 @@ public final class NBArcPolicy implements Policy {
 //    if (heapT2.valuesMap.values().stream().anyMatch(p -> p.queue != Q.T2))
 //      throw new IllegalStateException("Wrong queue in T2: " + currentTime);
 //
-//    if (heapT1.valuesMap.values().stream().mapToLong(p -> p.chunksAmount).sum() != sizeT1 ||
-//      heapT2.valuesMap.values().stream().mapToLong(p -> p.chunksAmount).sum() != sizeT2)
+//    if (heapT1.valuesMap.values().stream().mapToLong(p -> p.currentSize).sum() != sizeT1 ||
+//      heapT2.valuesMap.values().stream().mapToLong(p -> p.currentSize).sum() != sizeT2)
 //      System.out.println("Size mismatch: " + currentTime);
 
     double latency;
@@ -163,7 +163,7 @@ public final class NBArcPolicy implements Policy {
       case B1:
         if (event.operation() == READ) {
           policyStats.addDelay(event.retrievalDelay());
-          latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
+          latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSize(), 0, Consts.BANDWIDTH);
           policyStats.addLatency(latency);
         }
         onHitB1(prefix);
@@ -171,7 +171,7 @@ public final class NBArcPolicy implements Policy {
       case B2:
         if (event.operation() == READ) {
           policyStats.addDelay(event.retrievalDelay());
-          latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
+          latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSize(), 0, Consts.BANDWIDTH);
           policyStats.addLatency(latency);
         }
         onHitB2(prefix);
@@ -179,7 +179,7 @@ public final class NBArcPolicy implements Policy {
       case NONE:
         if (event.operation() == READ) {
           policyStats.addDelay(event.retrievalDelay());
-          latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSizeInMB(), 0, Consts.BANDWIDTH);
+          latency = calculateLatency(event.retrievalDelay(), prefix.fullItemSize(), 0, Consts.BANDWIDTH);
           policyStats.addLatency(latency);
         }
         onMiss(prefix);
@@ -188,7 +188,7 @@ public final class NBArcPolicy implements Policy {
   }
 
   private void onHitT1(Prefix prefix) {
-    if (prefix.chunksAmount > p)
+    if (prefix.currentSize > p)
       // The prefix is too large for T2, but it's already cached in T1, so it'll stay there
       return;
 
@@ -202,7 +202,7 @@ public final class NBArcPolicy implements Policy {
   }
 
   private void onHitB1(Prefix prefix) {
-    if (prefix.queue == Q.T1 && prefix.chunksAmount > p)
+    if (prefix.queue == Q.T1 && prefix.currentSize > p)
       // The prefix is too large for T2, but it's already cached in T1, so it'll stay there
       return;
 
@@ -214,7 +214,7 @@ public final class NBArcPolicy implements Policy {
   }
 
   private void onHitB2(Prefix prefix) {
-    if (prefix.queue == Q.T1 && prefix.chunksAmount > p)
+    if (prefix.queue == Q.T1 && prefix.currentSize > p)
       // The prefix is too large for T2, but it's already cached in T1, so it'll stay there
       return;
 
@@ -233,18 +233,18 @@ public final class NBArcPolicy implements Policy {
 
   private void moveToT1(Prefix prefix) {
     long maxSizeT1 = maximumCacheSize - p;
-    if (prefix.fullItemChunksAmount > maxSizeT1) {
+    if (prefix.fullItemSize > maxSizeT1) {
       prefix.queue = Q.B1;
-      sizeB1 += prefix.fullItemChunksAmount;
+      sizeB1 += prefix.fullItemSize;
       B1.put(prefix.itemKey, prefix);
-      prefix.chunksAmount = 0;
+      prefix.currentSize = 0;
       return;
     }
 
     if (prefix.queue != Q.NONE)
       throw new IllegalArgumentException("A move from " + prefix.queue + " to T1 doesn't suppose to happen - this is a bug!");
 
-    if (prefix.chunksAmount > 0)
+    if (prefix.currentSize > 0)
       throw new IllegalStateException("A non-empty prefix doesn't suppose to move to T1 - this is a bug!");
 
     // no need to waterDraw or add chunks to sizeT1,
@@ -254,36 +254,36 @@ public final class NBArcPolicy implements Policy {
 
   private void moveToT2(Prefix prefix) {
     long maxSizeT2 = p;
-    if (prefix.fullItemChunksAmount > maxSizeT2) {
+    if (prefix.fullItemSize > maxSizeT2) {
       if (heapT1.contains(prefix.itemKey)) {
         heapT1.remove(prefix.itemKey);
-        sizeT1 -= prefix.chunksAmount;
+        sizeT1 -= prefix.currentSize;
       }
       if (prefix.queue == Q.T1)
         prefix.queue = Q.B2;
       B2.put(prefix.itemKey, prefix);
-      sizeB2 += prefix.fullItemChunksAmount;
-      prefix.chunksAmount = 0;
+      sizeB2 += prefix.fullItemSize;
+      prefix.currentSize = 0;
       return;
     }
 
     if (heapT1.contains(prefix.itemKey)) {
       heapT1.remove(prefix.itemKey);
-      sizeT1 -= prefix.chunksAmount;
+      sizeT1 -= prefix.currentSize;
     } else if (prefix.queue == Q.B1) {
       B1.remove(prefix.itemKey);
-      sizeB1 -= prefix.fullItemChunksAmount;
+      sizeB1 -= prefix.fullItemSize;
     } else if (prefix.queue == Q.B2) {
       B2.remove(prefix.itemKey);
-      sizeB2 -= prefix.fullItemChunksAmount;
+      sizeB2 -= prefix.fullItemSize;
     }
 
-    if ((prefix.queue == Q.NONE || prefix.queue == Q.B1 || prefix.queue == Q.B2) && prefix.chunksAmount > 0)
+    if ((prefix.queue == Q.NONE || prefix.queue == Q.B1 || prefix.queue == Q.B2) && prefix.currentSize > 0)
       throw new IllegalStateException("A non-empty prefix doesn't suppose to move to T2 from B1 or B2 or NONE - this is a bug!");
 
-    if (prefix.chunksAmount > 0) {
-      waterDraw(Q.T2, prefix.chunksAmount);
-      sizeT2 += prefix.chunksAmount;
+    if (prefix.currentSize > 0) {
+      waterDraw(Q.T2, prefix.currentSize);
+      sizeT2 += prefix.currentSize;
       heapT2.upsert(prefix.itemKey, prefix);
     }
     prefix.queue = Q.T2;
@@ -314,22 +314,31 @@ public final class NBArcPolicy implements Policy {
 
     long currentHeapSize = prefix.queue == Q.T1 ? sizeT1 : sizeT2;
     long maximumHeapSize = prefix.queue == Q.T1 ? (maximumCacheSize - p) : p;
+    long addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
 
-    while (!prefix.isFull() && currentHeapSize < maximumHeapSize) {
+    while (!prefix.isFull() && currentHeapSize + addSize <= maximumHeapSize) {
       extendPrefix(prefix);
       currentHeapSize = prefix.queue == Q.T1 ? sizeT1 : sizeT2;
+      addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
     }
 
     if (prefix.isFull()) return;
 
-
     Prefix victim;
     do {
-      victim = findVictim(prefix.queue);
-      if (victim == null || victim.itemKey == prefix.itemKey) break;
-      shrinkPrefix(victim);
       extendPrefix(prefix);
-    } while (!prefix.isFull());
+      do {
+        victim = findVictim(prefix.queue);
+        shrinkPrefix(victim);
+
+        currentHeapSize = prefix.queue == Q.T1 ? sizeT1 : sizeT2;
+        maximumHeapSize = prefix.queue == Q.T1 ? (maximumCacheSize - p) : p;
+      } while (currentHeapSize > maximumHeapSize);
+
+    } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
+
+    assert currentHeapSize <= maximumCacheSize : "Current cache " + prefix.queue + " size exceeds the maximum cache size (current time: " + currentTime + ")";
+    assert currentHeapSize >= 0 : "Current cache " + prefix.queue + " size cannot be negative (current time: " + currentTime + ")";
   }
 
   private void extendPrefix(Prefix prefix) {
@@ -338,13 +347,15 @@ public final class NBArcPolicy implements Policy {
 
     if (prefix.isFull()) return;
 
-    prefix.insertChunk();
-    if (prefix.queue == Q.T1) sizeT1++;
-    else sizeT2++;
+    long addedSize = prefix.insertChunk();
+    if (prefix.queue == Q.T1) sizeT1 += addedSize;
+    else sizeT2 += addedSize;
 
     SearchableMinHeap<Long, Prefix> heap = prefix.queue == Q.T1 ? heapT1 : heapT2;
     heap.upsert(prefix.itemKey, prefix);
     policyStats.recordAdmission();
+
+    assert prefix.currentSize <= prefix.fullItemSize : "Prefix size exceeds its full size (current time: " + currentTime + ")";
   }
 
   private void shrinkPrefix(Prefix prefix) {
@@ -353,9 +364,9 @@ public final class NBArcPolicy implements Policy {
 
     if (prefix.isEmpty()) return;
 
-    prefix.removeChunk();
-    if (prefix.queue == Q.T1) sizeT1--;
-    else sizeT2--;
+    long removedSize = prefix.removeChunk();
+    if (prefix.queue == Q.T1) sizeT1 -= removedSize;
+    else sizeT2 -= removedSize;
 
     SearchableMinHeap<Long, Prefix> heap = prefix.queue == Q.T1 ? heapT1 : heapT2;
     if (!prefix.isEmpty()) heap.upsert(prefix.itemKey, prefix);
@@ -365,6 +376,12 @@ public final class NBArcPolicy implements Policy {
     if (prefix.isEmpty())
       if (prefix.queue == Q.T1) prefix.queue = Q.B1;
       else prefix.queue = Q.B2;
+
+    assert prefix.currentSize >= 0 : "Prefix size cannot be negative";
+    assert sizeT1 >= 0 : "T1 size cannot be negative";
+    assert sizeT2 >= 0 : "T2 size cannot be negative";
+    assert sizeB1 >= 0 : "B1 size cannot be negative";
+    assert sizeB2 >= 0 : "B2 size cannot be negative";
   }
 
   private Prefix findVictim(Q queue) {
@@ -398,20 +415,16 @@ public final class NBArcPolicy implements Policy {
       Prefix lastPrefix = Optional.ofNullable(heapT1.get(last)).orElse(heapT2.get(last));
       if (lastPrefix == null) lastPrefix = Optional.ofNullable(B1.get(last)).orElse(B2.get(last));
 
-      if (lastPrefix != null) lastPrefix.requestsCountInPeriod--;
+      if (lastPrefix != null) {
+        lastPrefix.requestsCountInPeriod--;
+      }
     }
   }
 
   private void recordRequestStatistics(Prefix prefix, double delay) {
-    double idealSize = Math.min(prefix.fullItemSizeInMB(), delay * Consts.BANDWIDTH);
-    long idealChunks = (long) Math.ceil(idealSize / Consts.CHUNK_SIZE);
-
-    policyStats.addHits(prefix.chunksAmount);
-    policyStats.addMisses(Math.max(0, idealChunks - prefix.chunksAmount));
-
-    double underflow = TimeCalculations.calculateUnderflowDelay(delay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
+    double underflow = TimeCalculations.calculateUnderflowDelay(delay, prefix.fullItemSize(), prefix.currentSize(), Consts.BANDWIDTH);
     policyStats.addDelay(underflow);
-    double latency = calculateLatency(delay, prefix.fullItemSizeInMB(), prefix.sizeInMB(), Consts.BANDWIDTH);
+    double latency = calculateLatency(delay, prefix.fullItemSize(), prefix.currentSize(), Consts.BANDWIDTH);
     policyStats.addLatency(latency);
   }
 
@@ -428,8 +441,8 @@ public final class NBArcPolicy implements Policy {
     Policy.super.finished();
     checkState(sizeT1 + sizeT2 <= maximumCacheSize, "resident size overflow");
 
-    long countedT1 = heapT1.valuesMap.values().stream().filter(p -> p.queue == Q.T1).mapToLong(p -> p.chunksAmount).sum();
-    long countedT2 = heapT2.valuesMap.values().stream().filter(p -> p.queue == Q.T2).mapToLong(p -> p.chunksAmount).sum();
+    long countedT1 = heapT1.valuesMap.values().stream().filter(p -> p.queue == Q.T1).mapToLong(p -> p.currentSize).sum();
+    long countedT2 = heapT2.valuesMap.values().stream().filter(p -> p.queue == Q.T2).mapToLong(p -> p.currentSize).sum();
     checkState(countedT1 == sizeT1, "T1 mismatch");
     checkState(countedT2 == sizeT2, "T2 mismatch");
   }
@@ -440,43 +453,48 @@ public final class NBArcPolicy implements Policy {
   }
 
   static public class Prefix {
-    final long itemKey, fullItemChunksAmount;
+    final long itemKey, fullItemSize;
     final Source source;
-    long chunksAmount;
+    long currentSize;
     long requestsCountInPeriod;
     long lastRequestTime;
     Q queue = Q.NONE;
 
-    public Prefix(long itemKey, long fullItemChunksAmount, Source source, long currentTime) {
+    public Prefix(long itemKey, long fullItemSize, Source source, long currentTime) {
       this.itemKey = itemKey;
-      this.fullItemChunksAmount = fullItemChunksAmount;
+      this.fullItemSize = fullItemSize;
       this.source = source;
       this.lastRequestTime = currentTime;
-      this.chunksAmount = 0;
+      this.currentSize = 0;
     }
 
-    public void insertChunk() {
-      if (!isFull()) chunksAmount++;
+    public long insertChunk() {
+      long addSize = Math.min(fullItemSize - currentSize, Consts.CHUNK_SIZE);
+      currentSize += addSize;
+      return addSize;
     }
 
-    public void removeChunk() {
-      if (chunksAmount > 0) chunksAmount--;
+    public long removeChunk() {
+      long remainder = currentSize % Consts.CHUNK_SIZE;
+      long removeSize = (remainder > 0) ? remainder : Consts.CHUNK_SIZE;
+      currentSize -= removeSize;
+      return removeSize;
     }
 
     public boolean isFull() {
-      return chunksAmount == fullItemChunksAmount;
+      return currentSize == fullItemSize;
     }
 
     public boolean isEmpty() {
-      return chunksAmount == 0;
+      return currentSize == 0;
     }
 
-    public double sizeInMB() {
-      return chunksAmount * Consts.CHUNK_SIZE;
+    public double currentSize() {
+      return currentSize;
     }
 
-    public double fullItemSizeInMB() {
-      return fullItemChunksAmount * Consts.CHUNK_SIZE;
+    public double fullItemSize() {
+      return fullItemSize;
     }
 
     public double recency() {
@@ -484,7 +502,7 @@ public final class NBArcPolicy implements Policy {
     }
 
     public double lruScore() {
-      double t = TimeCalculations.calculateTransmissionTime(sizeInMB(), Consts.BANDWIDTH);
+      double t = TimeCalculations.calculateTransmissionTime(currentSize, Consts.BANDWIDTH);
       return recency() * (1 - source.calculateCDF(t));
     }
 

@@ -8,9 +8,9 @@ public final class TimeCalculations {
    * If the delay is negative, there's "overflow" - the object is fetched slower than the source delay.
    *
    * @param sourceDelay in seconds
-   * @param itemSize    in MB
-   * @param prefixSize  in MB
-   * @param bandwidth   in MBps
+   * @param itemSize    in B
+   * @param prefixSize  in B
+   * @param bandwidth   in Bps
    * @return the delay in seconds
    */
   public static double calculateUnderflowDelay(double sourceDelay, double itemSize, double prefixSize, long bandwidth) {

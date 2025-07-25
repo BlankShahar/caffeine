@@ -64,7 +64,7 @@ public final class SAHyperbolicPolicy implements Policy {
 
   private void onRead(AccessEvent event) {
     long itemKey = event.key();
-    long itemSize = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
+    long itemSize = event.itemSize();
     double retrievalDelay = event.retrievalDelay();
 
     policyStats.recordOperation();
@@ -81,8 +81,8 @@ public final class SAHyperbolicPolicy implements Policy {
       if (event.operation() == READ) {
         double latency = calculateLatency(
           event.retrievalDelay(),
-          event.itemSize() * Consts.CHUNK_SIZE,
-          event.itemSize() * Consts.CHUNK_SIZE,
+          event.itemSize(),
+          event.itemSize(),
           Consts.BANDWIDTH
         );
         policyStats.addLatency(latency);
@@ -96,7 +96,7 @@ public final class SAHyperbolicPolicy implements Policy {
         policyStats.addDelay(retrievalDelay);
         double latency = calculateLatency(
           event.retrievalDelay(),
-          event.itemSize() * Consts.CHUNK_SIZE,
+          event.itemSize(),
           0,
           Consts.BANDWIDTH
         );

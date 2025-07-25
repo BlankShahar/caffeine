@@ -100,14 +100,14 @@ public final class SASegmentedLruPolicy implements Policy {
     Node node = data.get(event.key());
 
     if (node == null) {
-      long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
-      onMiss(event.key(), event.retrievalDelay(), chunksAmount);
+      long currentSize = event.itemSize();
+      onMiss(event.key(), event.retrievalDelay(), currentSize);
 
       if (event.operation() == READ) {
         policyStats.addDelay(event.retrievalDelay());
         double latency = calculateLatency(
           event.retrievalDelay(),
-          event.itemSize() * Consts.CHUNK_SIZE,
+          event.itemSize(),
           0,
           Consts.BANDWIDTH
         );
@@ -120,8 +120,8 @@ public final class SASegmentedLruPolicy implements Policy {
       if (event.operation() == READ) {
         double latency = calculateLatency(
           event.retrievalDelay(),
-          event.itemSize() * Consts.CHUNK_SIZE,
-          event.itemSize() * Consts.CHUNK_SIZE,
+          event.itemSize(),
+          event.itemSize(),
           Consts.BANDWIDTH
         );
         policyStats.addLatency(latency);

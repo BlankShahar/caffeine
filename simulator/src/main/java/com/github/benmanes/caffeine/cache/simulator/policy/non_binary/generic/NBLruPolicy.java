@@ -22,8 +22,8 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Tim
 public final class NBLruPolicy implements Policy {
   final Queue<Long> requests;
   static long currentTime;
-  final long maximumCacheSize; // in chunks
-  long currentCacheSize; // in chunks
+  final long maximumCacheSize;
+  long currentCacheSize;
   final PolicyStats policyStats;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
   Source source;
@@ -71,7 +71,7 @@ public final class NBLruPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exists, remove it
       scoreMinHeap.remove(existingPrefix.itemKey);
-      currentCacheSize -= existingPrefix.chunksAmount;
+      currentCacheSize -= existingPrefix.currentSize;
       policyStats.recordEviction();
       policyStats.recordOperation();
     }
@@ -87,8 +87,8 @@ public final class NBLruPolicy implements Policy {
       onRequest(existingPrefix, event.retrievalDelay(), event.operation());
     } else {
       // prefix missing (full miss)
-      long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
-      var newPrefix = new Prefix(itemKey, chunksAmount, source, currentTime);
+      long currentSize = event.itemSize();
+      var newPrefix = new Prefix(itemKey, currentSize, source, currentTime);
       onRequest(newPrefix, event.retrievalDelay(), event.operation());
     }
   }
@@ -115,49 +115,44 @@ public final class NBLruPolicy implements Policy {
   }
 
   private void recordRequestStatistics(Prefix old, double sourceDelay) {
-    // The ideal prefix size - the size that gives "no delay"/"all the item is cached" illusion
-    double idealSize = Math.min(old.fullItemSizeInMB(), sourceDelay * Consts.BANDWIDTH);
-    long idealChunksAmount = (long) Math.ceil(idealSize / Consts.CHUNK_SIZE);
-
-    // Chunk Hit Rate
-    policyStats.addHits(old.chunksAmount);
-    policyStats.addMisses(Math.max(0, idealChunksAmount - old.chunksAmount));
-
     // Total delay
     double underflowDelay = calculateUnderflowDelay(sourceDelay, old);
     policyStats.addDelay(underflowDelay);
-    double latency = calculateLatency(sourceDelay, old.fullItemSizeInMB(), old.sizeInMB(), Consts.BANDWIDTH);
+    double latency = calculateLatency(sourceDelay, old.fullItemSize(), old.currentSize(), Consts.BANDWIDTH);
     policyStats.addLatency(latency);
   }
 
   private void waterFill(Prefix prefix) {
-//    long fillUpSize = Math.min(
-//      prefix.fullItemChunksAmount - prefix.chunksAmount,
-//      maximumCacheSize - currentCacheSize
-//    );
-//    extendPrefixBySize(prefix, fillUpSize);
-
-    while (!prefix.isFull() && currentCacheSize < maximumCacheSize) {
+    long addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
+    while (!prefix.isFull() && // stop if the prefix is full
+      currentCacheSize + addSize <= maximumCacheSize // stop if adding another chunk would exceed the maximum cache size
+    ) {
       extendPrefix(prefix);
+      addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
     }
 
     if (prefix.isFull() || maximumCacheSize == 0) return;
 
     Prefix victim;
     do {
-      victim = findVictim();
-      shrinkPrefix(victim);
       extendPrefix(prefix);
+      do {
+        victim = findVictim();
+        shrinkPrefix(victim);
+      } while (currentCacheSize > maximumCacheSize);
+
     } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
+
+    assert currentCacheSize <= maximumCacheSize : "Current cache size exceeds the maximum cache size (current time: " + currentTime + ")";
+    assert currentCacheSize >= 0 : "Current cache size cannot be negative (current time: " + currentTime + ")";
   }
 
   private void shrinkPrefix(Prefix prefix) {
-    if (prefix.isEmpty()) {
+    if (prefix.isEmpty())
       return;
-    }
-    prefix.removeChunk();
-    currentCacheSize--;
 
+    long removedSize = prefix.removeChunk();
+    currentCacheSize -= removedSize;
     if (prefix.isEmpty())
       scoreMinHeap.remove(prefix.itemKey);
     else
@@ -165,37 +160,23 @@ public final class NBLruPolicy implements Policy {
 
     policyStats.recordOperation();
     policyStats.recordEviction();
+
+    assert prefix.currentSize >= 0 : "Prefix size cannot be negative";
+    assert currentCacheSize >= 0 : "Current cache size cannot be negative";
   }
 
   private void extendPrefix(Prefix prefix) {
-    if (prefix.isFull()) {
+    if (prefix.isFull())
       return;
-    }
-    prefix.insertChunk();
-    currentCacheSize++;
 
-//    if (scoreMinHeap.contains(prefix.itemKey)) {
-//      scoreMinHeap.remove(prefix.itemKey);
-//    }
+    long addedSize = prefix.insertChunk();
+    currentCacheSize += addedSize;
     scoreMinHeap.upsert(prefix.itemKey, prefix);
 
     policyStats.recordOperation();
     policyStats.recordAdmission();
-  }
 
-  private void extendPrefixBySize(Prefix prefix, long size) {
-    if (prefix.chunksAmount + size > prefix.fullItemChunksAmount)
-      throw new IllegalArgumentException("Cannot extend prefix #" + prefix.itemKey + " beyond its full size");
-    prefix.chunksAmount += size;
-    currentCacheSize += size;
-
-//    if (scoreMinHeap.contains(prefix.itemKey)) {
-//      scoreMinHeap.remove(prefix.itemKey);
-//    }
-    scoreMinHeap.upsert(prefix.itemKey, prefix);
-
-    policyStats.recordOperation();
-    policyStats.recordAdmission();
+    assert prefix.currentSize <= prefix.fullItemSize : "Prefix size exceeds its full size (current time: " + currentTime + ")";
   }
 
   /**
@@ -215,8 +196,8 @@ public final class NBLruPolicy implements Policy {
   private static double calculateUnderflowDelay(double sourceDelay, Prefix prefix) {
     return TimeCalculations.calculateUnderflowDelay(
       sourceDelay,
-      prefix.fullItemSizeInMB(),
-      prefix.sizeInMB(),
+      prefix.fullItemSize(),
+      prefix.currentSize(),
       Consts.BANDWIDTH
     );
   }
@@ -246,25 +227,25 @@ public final class NBLruPolicy implements Policy {
   }
 
   static public class Prefix {
-    final long itemKey, fullItemChunksAmount;
+    final long itemKey, fullItemSize;
     final Source source;
-    long chunksAmount;
+    long currentSize;
     long requestsCountInPeriod;
     long lastRequestTime;
 
-    public Prefix(long itemKey, long fullItemChunksAmount, Source source, long currentTime) {
+    public Prefix(long itemKey, long fullItemSize, Source source, long currentTime) {
       this.itemKey = itemKey;
-      this.fullItemChunksAmount = fullItemChunksAmount;
+      this.fullItemSize = fullItemSize;
       this.source = source;
       this.requestsCountInPeriod = 0;
       this.lastRequestTime = currentTime;
-      this.chunksAmount = 0;
+      this.currentSize = 0;
     }
 
     public double lruScore() {
       // Idea - recency times the probability of not experiencing delay
       double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        sizeInMB(),
+        currentSize(),
         Consts.BANDWIDTH
       );
       return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
@@ -274,32 +255,33 @@ public final class NBLruPolicy implements Policy {
       return (double) 1 / (currentTime - lastRequestTime + 1);
     }
 
-    public void insertChunk() {
-      if (!isFull()) {
-        chunksAmount++;
-      }
+    public long insertChunk() {
+      long addSize = Math.min(fullItemSize - currentSize, Consts.CHUNK_SIZE);
+      currentSize += addSize;
+      return addSize;
     }
 
-    public void removeChunk() {
-      if (chunksAmount > 0) {
-        chunksAmount--;
-      }
+    public long removeChunk() {
+      long remainder = currentSize % Consts.CHUNK_SIZE;
+      long removeSize = (remainder > 0) ? remainder : Consts.CHUNK_SIZE;
+      currentSize -= removeSize;
+      return removeSize;
     }
 
-    public double sizeInMB() {
-      return chunksAmount * Consts.CHUNK_SIZE;
+    public double currentSize() {
+      return currentSize;
     }
 
-    public double fullItemSizeInMB() {
-      return fullItemChunksAmount * Consts.CHUNK_SIZE;
+    public double fullItemSize() {
+      return fullItemSize;
     }
 
     public boolean isFull() {
-      return chunksAmount == fullItemChunksAmount;
+      return currentSize == fullItemSize;
     }
 
     public boolean isEmpty() {
-      return chunksAmount == 0;
+      return currentSize == 0;
     }
 
     public int lruCompareTo(Prefix other) {

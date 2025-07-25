@@ -135,7 +135,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
 
   private void onRead(AccessEvent event) {
     final long key = event.key();
-    final long weight = event.itemSize();//(int) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
+    final long weight = event.itemSize();
     policyStats.recordOperation();
     Node node = data.get(key);
     if (sizeData >= (maximumSize >>> 1)) {
@@ -153,7 +153,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
 
       if (event.operation() == READ) {
         policyStats.addDelay(event.retrievalDelay());
-        double latency = calculateLatency(event.retrievalDelay(), event.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
+        double latency = calculateLatency(event.retrievalDelay(), event.itemSize(), 0, Consts.BANDWIDTH);
         policyStats.addLatency(latency);
       }
 
@@ -162,7 +162,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
       policyStats.recordWeightedHit(weight);
 
       if (event.operation() == READ) {
-        double latency = calculateLatency(event.retrievalDelay(), event.itemSize() * Consts.CHUNK_SIZE, event.itemSize() * Consts.CHUNK_SIZE, Consts.BANDWIDTH);
+        double latency = calculateLatency(event.retrievalDelay(), event.itemSize(), event.itemSize(), Consts.BANDWIDTH);
         policyStats.addLatency(latency);
       }
 

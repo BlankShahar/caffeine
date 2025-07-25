@@ -71,15 +71,15 @@ public final class SALrfuPolicy implements Policy {
 
     Node node = heap.get(event.key());
     if (node == null) {
-      long chunksAmount = event.itemSize(); // (long) Math.ceil(event.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
-      node = new Node(event.key(), chunksAmount, currentTime);
+      long currentSize = event.itemSize();
+      node = new Node(event.key(), currentSize, currentTime);
     }
     if (!heap.contains(node.key)) {
       if (event.operation() == READ) {
         stats.addDelay(event.retrievalDelay());
         double latency = calculateLatency(
           event.retrievalDelay(),
-          event.itemSize() * Consts.CHUNK_SIZE,
+          event.itemSize(),
           0,
           Consts.BANDWIDTH
         );
@@ -89,8 +89,8 @@ public final class SALrfuPolicy implements Policy {
       if (event.operation() == READ) {
         double latency = calculateLatency(
           event.retrievalDelay(),
-          event.itemSize() * Consts.CHUNK_SIZE,
-          event.itemSize() * Consts.CHUNK_SIZE,
+          event.itemSize(),
+          event.itemSize(),
           Consts.BANDWIDTH
         );
         stats.addLatency(latency);
@@ -108,7 +108,6 @@ public final class SALrfuPolicy implements Policy {
       while (currentCacheSize + node.size > maximumCacheSize) {
         evict();
       }
-      node.chunks = node.size;
       currentCacheSize += node.size;
       stats.recordAdmission();
     }
@@ -125,8 +124,7 @@ public final class SALrfuPolicy implements Policy {
 
   private void evict() {
     Node victim = heap.extractMin().value();
-    currentCacheSize -= victim.chunks;
-    victim.chunks = 0;
+    currentCacheSize -= victim.size;
     stats.recordEviction();
   }
 
@@ -153,7 +151,6 @@ public final class SALrfuPolicy implements Policy {
   static final class Node {
     final long key;
     final long size;
-    long chunks;
     long lastAccessTime;
     double score;
 
@@ -162,26 +159,17 @@ public final class SALrfuPolicy implements Policy {
       this.size = size;
       this.lastAccessTime = now;
       this.score = 0;
-      this.chunks = 0;
     }
 
     boolean isEmpty() {
-      return chunks == 0;
-    }
-
-    double sizeInMB() {
-      return size * Consts.CHUNK_SIZE;
-    }
-
-    double cachedInMB() {
-      return chunks * Consts.CHUNK_SIZE;
+      return size == 0;
     }
 
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
         .add("key", key)
-        .add("chunks", chunks)
+        .add("size", size)
         .add("score", score)
         .toString();
     }

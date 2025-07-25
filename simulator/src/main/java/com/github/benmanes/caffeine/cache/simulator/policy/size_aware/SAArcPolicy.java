@@ -107,8 +107,8 @@ public final class SAArcPolicy implements Policy {
     stats.recordHit();
     double latency = calculateLatency(
       e.retrievalDelay(),
-      e.itemSize() * Consts.CHUNK_SIZE,
-      e.itemSize() * Consts.CHUNK_SIZE,
+      e.itemSize(),
+      e.itemSize(),
       Consts.BANDWIDTH
     );
     stats.addLatency(latency);
@@ -119,7 +119,7 @@ public final class SAArcPolicy implements Policy {
 
     if (e.operation() == READ) {
       stats.addDelay(e.retrievalDelay());
-      double latency = calculateLatency(e.retrievalDelay(), e.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
+      double latency = calculateLatency(e.retrievalDelay(), e.itemSize(), 0, Consts.BANDWIDTH);
       stats.addLatency(latency);
     }
 
@@ -136,7 +136,7 @@ public final class SAArcPolicy implements Policy {
     stats.recordMiss();
     if (e.operation() == READ) {
       stats.addDelay(e.retrievalDelay());
-      double latency = calculateLatency(e.retrievalDelay(), e.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
+      double latency = calculateLatency(e.retrievalDelay(), e.itemSize(), 0, Consts.BANDWIDTH);
       stats.addLatency(latency);
     }
 
@@ -159,12 +159,12 @@ public final class SAArcPolicy implements Policy {
   }
 
   private void onMiss(AccessEvent event) {
-    long size = event.itemSize(); // (long) Math.ceil(e.itemSize() / (Consts.CHUNK_SIZE * 1024 * 1024));
+    long size = event.itemSize();
     stats.recordMiss();
 
     if (event.operation() == READ) {
       stats.addDelay(event.retrievalDelay());
-      double latency = calculateLatency(event.retrievalDelay(), event.itemSize() * Consts.CHUNK_SIZE, 0, Consts.BANDWIDTH);
+      double latency = calculateLatency(event.retrievalDelay(), event.itemSize(), 0, Consts.BANDWIDTH);
       stats.addLatency(latency);
     }
 
