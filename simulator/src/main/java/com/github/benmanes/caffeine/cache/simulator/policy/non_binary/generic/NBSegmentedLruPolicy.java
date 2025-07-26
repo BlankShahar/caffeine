@@ -74,7 +74,6 @@ public final class NBSegmentedLruPolicy implements Policy {
   }
 
   private void onWrite(AccessEvent event) {
-    policyStats.recordOperation();
     onDelete(event);
     onRead(event);
   }
@@ -84,25 +83,24 @@ public final class NBSegmentedLruPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exists, remove it
       probationHeap.remove(existingPrefix.itemKey);
+      policyStats.recordOperation();
       currentProbationSize -= existingPrefix.currentSize;
       policyStats.recordEviction();
-      policyStats.recordOperation();
     }
 
     existingPrefix = protectedHeap.get(event.key());
     if (existingPrefix != null) {
       // prefix exists, remove it
       protectedHeap.remove(existingPrefix.itemKey);
+      policyStats.recordOperation();
       currentProtectedSize -= existingPrefix.currentSize;
       policyStats.recordEviction();
-      policyStats.recordOperation();
     }
   }
 
   private void onRead(AccessEvent event) {
     long itemKey = event.key();
     Prefix prefix = Optional.ofNullable(probationHeap.get(itemKey)).orElse(protectedHeap.get(itemKey));
-    policyStats.recordOperation();
 
     if (prefix == null) {
       // First time we see this item
@@ -141,6 +139,7 @@ public final class NBSegmentedLruPolicy implements Policy {
     // Evict/demote from protected if necessary to make room
     while (prefix.currentSize + currentProtectedSize > maxProtectedSize && !protectedHeap.isEmpty()) {
       Prefix demote = protectedHeap.extractMin().value();
+      policyStats.recordOperation();
       demote.isInProtected = false;
       currentProtectedSize -= demote.currentSize;
 
@@ -148,6 +147,7 @@ public final class NBSegmentedLruPolicy implements Policy {
       // Free up space in probation if needed
       while (demote.currentSize + currentProbationSize > maxProbationSize) {
         Prefix eviction = probationHeap.extractMin().value();
+        policyStats.recordOperation();
         currentProbationSize -= eviction.currentSize;
         eviction.currentSize = 0;
         policyStats.recordEviction();
@@ -155,6 +155,7 @@ public final class NBSegmentedLruPolicy implements Policy {
       // Move demoted item to probation
       currentProbationSize += demote.currentSize;
       probationHeap.upsert(demote.itemKey, demote);
+      policyStats.recordOperation();
     }
 
     assert currentProtectedSize <= maxProtectedSize : "Protected size exceeds maximum protected size (current time: " + currentTime + ")";
@@ -166,9 +167,11 @@ public final class NBSegmentedLruPolicy implements Policy {
     prefix.isInProtected = true;
     if (probationHeap.contains(prefix.itemKey)) {
       probationHeap.remove(prefix.itemKey);
+      policyStats.recordOperation();
       currentProbationSize -= prefix.currentSize;
     }
     protectedHeap.upsert(prefix.itemKey, prefix);
+    policyStats.recordOperation();
     currentProtectedSize += prefix.currentSize;
 
     assert currentProtectedSize <= maxProtectedSize : "Protected size exceeds maximum protected size (current time: " + currentTime + ")";

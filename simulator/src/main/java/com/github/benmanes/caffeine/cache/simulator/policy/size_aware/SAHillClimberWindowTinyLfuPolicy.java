@@ -114,7 +114,6 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private void onWrite(AccessEvent event) {
-    policyStats.recordOperation();
     onDelete(event);
     onRead(event);
   }
@@ -128,15 +127,14 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
       if (existingItem.queue == PROTECTED) protectedSize -= existingItem.weight;
       else if (existingItem.queue == WINDOW) windowSize -= existingItem.weight;
       existingItem.remove();
-      policyStats.recordEviction();
       policyStats.recordOperation();
+      policyStats.recordEviction();
     }
   }
 
   private void onRead(AccessEvent event) {
     final long key = event.key();
     final long weight = event.itemSize();
-    policyStats.recordOperation();
     Node node = data.get(key);
     if (sizeData >= (maximumSize >>> 1)) {
       sketch.ensureCapacity(2_000_000);
@@ -191,8 +189,10 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     Node node = new Node(key, weight, WINDOW);
     if (weight > maxWindow) {
       node.appendToHead(headWindow);
+      policyStats.recordOperation();
     } else {
       node.appendToTail(headWindow);
+      policyStats.recordOperation();
     }
     data.put(key, node);
     windowSize += weight;
@@ -205,6 +205,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
    */
   private void onWindowHit(Node node) {
     node.moveToTail(headWindow);
+    policyStats.recordOperation();
   }
 
   /**
@@ -212,8 +213,10 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
    */
   private void onProbationHit(Node node) {
     node.remove();
+    policyStats.recordOperation();
     node.queue = PROTECTED;
     node.appendToTail(headProtected);
+    policyStats.recordOperation();
     protectedSize += node.weight;
     demoteProtected();
   }
@@ -222,8 +225,10 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     while (protectedSize > maxProtected) {
       Node demote = headProtected.next;
       demote.remove();
+      policyStats.recordOperation();
       demote.queue = PROBATION;
       demote.appendToTail(headProbation);
+      policyStats.recordOperation();
       protectedSize -= demote.weight;
     }
   }
@@ -233,6 +238,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
    */
   private void onProtectedHit(Node node) {
     node.moveToTail(headProtected);
+    policyStats.recordOperation();
   }
 
   /**
@@ -245,6 +251,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     while (headCandidates.prev != headCandidates) {
       Node candidate = headCandidates.prev;
       candidate.remove();
+      policyStats.recordOperation();
       if ((sizeData + candidate.weight - windowSize) > (maximumSize - maxWindow)) {
         coreEviction(candidate);
       } else {
@@ -272,12 +279,14 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
 
   protected void admit(Node candidate) {
     candidate.appendToTail(headProbation);
+    policyStats.recordOperation();
     sizeData += candidate.weight;
     policyStats.recordAdmission();
   }
 
   protected void reject(Node candidate) {
     data.remove(candidate.key);
+    policyStats.recordOperation();
     policyStats.recordEviction();
     policyStats.recordRejection();
   }
@@ -289,6 +298,7 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
       protectedSize -= evict.weight;
     }
     evict.remove();
+    policyStats.recordOperation();
     policyStats.recordEviction();
   }
 
@@ -301,11 +311,13 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
       windowSize -= candidate.weight;
       sizeData -= candidate.weight;
       candidate.remove();
+      policyStats.recordOperation();
       if (candidate.weight > (maximumSize - maxWindow)) {
         reject(candidate);
       } else {
         candidate.queue = PROBATION;
         candidate.appendToTail(headCandidates);
+        policyStats.recordOperation();
       }
     }
   }
@@ -362,7 +374,9 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
       }
       candidate.queue = WINDOW;
       candidate.remove();
+      policyStats.recordOperation();
       candidate.appendToHead(headWindow);
+      policyStats.recordOperation();
       windowSize += candidate.weight;
     }
     evict();
@@ -393,7 +407,9 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
     while ((windowSize > maxWindow) && (sizeData - windowSize + candidate.weight) <= (maximumSize - maxWindow)) {
       candidate.queue = PROBATION;
       candidate.remove();
+      policyStats.recordOperation();
       candidate.appendToHead(headProbation);
+      policyStats.recordOperation();
       windowSize -= candidate.weight;
       candidate = headWindow.next;
     }

@@ -77,7 +77,6 @@ public final class SASegmentedLruPolicy implements Policy {
   }
 
   private void onWrite(AccessEvent event) {
-    policyStats.recordOperation();
     onDelete(event);
     onRead(event);
   }
@@ -90,13 +89,12 @@ public final class SASegmentedLruPolicy implements Policy {
       if (existingItem.type == QueueType.PROTECTED) sizeProtected -= existingItem.size;
       else sizeProbation -= existingItem.size;
       existingItem.remove();
-      policyStats.recordEviction();
       policyStats.recordOperation();
+      policyStats.recordEviction();
     }
   }
 
   private void onRead(AccessEvent event) {
-    policyStats.recordOperation();
     Node node = data.get(event.key());
 
     if (node == null) {
@@ -137,6 +135,7 @@ public final class SASegmentedLruPolicy implements Policy {
     if (node.type == QueueType.PROTECTED) {
       // Already in protected => move to MRU
       node.moveToTail(headProtected);
+      policyStats.recordOperation();
     } else {
       // It's in probation => attempt promotion to protected
       long neededSize = node.size;
@@ -146,14 +145,17 @@ public final class SASegmentedLruPolicy implements Policy {
         // Remove from probation tracking
         sizeProbation -= node.size;
         node.remove();
+        policyStats.recordOperation();
 
         // Switch type & add to protected
         node.type = QueueType.PROTECTED;
         node.appendToTail(headProtected);
+        policyStats.recordOperation();
         sizeProtected += node.size;
       } else {
         // Not enough room => remain in probation, but move to MRU
         node.moveToTail(headProbation);
+        policyStats.recordOperation();
       }
     }
     policyStats.recordHit();
@@ -165,7 +167,6 @@ public final class SASegmentedLruPolicy implements Policy {
   private void onMiss(long key, double retrievalDelay, long itemSize) {
     // If item is bigger than the entire probation region, skip
     if (itemSize > maxProbationSize) {
-      policyStats.recordOperation(); // no insert
       return;
     }
 
@@ -175,6 +176,7 @@ public final class SASegmentedLruPolicy implements Policy {
 
     // Add to probation
     node.appendToTail(headProbation);
+    policyStats.recordOperation();
     sizeProbation += itemSize;
 
     currentSize += itemSize;
@@ -219,10 +221,12 @@ public final class SASegmentedLruPolicy implements Policy {
       && headProtected.next != headProtected) {
       Node demote = headProtected.next; // LRU in protected
       demote.remove();
+      policyStats.recordOperation();
       demote.type = QueueType.PROBATION;
 
       // Move to probation's MRU
       demote.appendToTail(headProbation);
+      policyStats.recordOperation();
       sizeProtected -= demote.size;
       sizeProbation += demote.size;
     }
@@ -242,6 +246,7 @@ public final class SASegmentedLruPolicy implements Policy {
     }
 
     node.remove();
+    policyStats.recordOperation();
     policyStats.recordEviction();
   }
 

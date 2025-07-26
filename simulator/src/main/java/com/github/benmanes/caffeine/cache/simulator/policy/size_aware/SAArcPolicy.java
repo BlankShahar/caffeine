@@ -25,7 +25,7 @@ public final class SAArcPolicy implements Policy {
   private final Node headB2 = new Node(0);
 
   private final Long2ObjectMap<Node> data = new Long2ObjectOpenHashMap<>();
-  private final PolicyStats stats = new PolicyStats(name());
+  private final PolicyStats policyStats = new PolicyStats(name());
   private final long maximumCacheSize;
   private long p;
 
@@ -56,7 +56,6 @@ public final class SAArcPolicy implements Policy {
   }
 
   private void onWrite(AccessEvent event) {
-    stats.recordOperation();
     onDelete(event);
     onRead(event);
   }
@@ -71,14 +70,13 @@ public final class SAArcPolicy implements Policy {
       else if (existingItem.q == Q.B1) sizeB1 -= existingItem.size;
       else if (existingItem.q == Q.B2) sizeB2 -= existingItem.size;
       existingItem.remove();
-      stats.recordEviction();
-      stats.recordOperation();
+      policyStats.recordOperation();
+      policyStats.recordEviction();
     }
   }
 
   private void onRead(AccessEvent event) {
     currentTime++;
-    stats.recordOperation();
 
     Node n = data.get(event.key());
     if (n == null) {
@@ -101,26 +99,27 @@ public final class SAArcPolicy implements Policy {
       sizeT2 += n.size;
     }
     n.remove();
+    policyStats.recordOperation();
     n.q = Q.T2;
     n.appendToTail(headT2);
-
-    stats.recordHit();
+    policyStats.recordOperation();
+    policyStats.recordHit();
     double latency = calculateLatency(
       e.retrievalDelay(),
       e.itemSize(),
       e.itemSize(),
       Consts.BANDWIDTH
     );
-    stats.addLatency(latency);
+    policyStats.addLatency(latency);
   }
 
   private void onHitB1(Node n, AccessEvent e) {
-    stats.recordMiss();
+    policyStats.recordMiss();
 
     if (e.operation() == READ) {
-      stats.addDelay(e.retrievalDelay());
+      policyStats.addDelay(e.retrievalDelay());
       double latency = calculateLatency(e.retrievalDelay(), e.itemSize(), 0, Consts.BANDWIDTH);
-      stats.addLatency(latency);
+      policyStats.addLatency(latency);
     }
 
     p = Math.min(maximumCacheSize, p + n.size);
@@ -133,11 +132,11 @@ public final class SAArcPolicy implements Policy {
   }
 
   private void onHitB2(Node n, AccessEvent e) {
-    stats.recordMiss();
+    policyStats.recordMiss();
     if (e.operation() == READ) {
-      stats.addDelay(e.retrievalDelay());
+      policyStats.addDelay(e.retrievalDelay());
       double latency = calculateLatency(e.retrievalDelay(), e.itemSize(), 0, Consts.BANDWIDTH);
-      stats.addLatency(latency);
+      policyStats.addLatency(latency);
     }
 
     p = Math.max(0, p - n.size);
@@ -153,19 +152,21 @@ public final class SAArcPolicy implements Policy {
     if (n.q == Q.B1) sizeB1 -= n.size;
     else sizeB2 -= n.size;
     n.remove();
+    policyStats.recordOperation();
     n.q = Q.T2;
     n.appendToTail(headT2);
+    policyStats.recordOperation();
     sizeT2 += n.size;
   }
 
   private void onMiss(AccessEvent event) {
     long size = event.itemSize();
-    stats.recordMiss();
+    policyStats.recordMiss();
 
     if (event.operation() == READ) {
-      stats.addDelay(event.retrievalDelay());
+      policyStats.addDelay(event.retrievalDelay());
       double latency = calculateLatency(event.retrievalDelay(), event.itemSize(), 0, Consts.BANDWIDTH);
-      stats.addLatency(latency);
+      policyStats.addLatency(latency);
     }
 
     if (size > maximumCacheSize) {
@@ -192,6 +193,7 @@ public final class SAArcPolicy implements Policy {
       Node n = new Node(event.key(), size);
       n.q = Q.T1;
       n.appendToTail(headT1);
+      policyStats.recordOperation();
       data.put(event.key(), n);
       sizeT1 += size;
     }
@@ -212,18 +214,21 @@ public final class SAArcPolicy implements Policy {
 
   private void evictResident(Node v) {
     v.remove();
+    policyStats.recordOperation();
     if (v.q == Q.T1) {
       v.q = Q.B1;
       v.appendToTail(headB1);
+      policyStats.recordOperation();
       sizeT1 -= v.size;
       sizeB1 += v.size;
     } else {
       v.q = Q.B2;
       v.appendToTail(headB2);
+      policyStats.recordOperation();
       sizeT2 -= v.size;
       sizeB2 += v.size;
     }
-    stats.recordEviction();
+    policyStats.recordEviction();
   }
 
   private void evictGhost(Node g) {
@@ -235,12 +240,12 @@ public final class SAArcPolicy implements Policy {
 
   @Override
   public PolicyStats stats() {
-    return stats;
+    return policyStats;
   }
 
   @Override
   public void finished() {
-    stats.setPercentAdaption((sizeT1 / (double) maximumCacheSize) - 0.5);
+    policyStats.setPercentAdaption((sizeT1 / (double) maximumCacheSize) - 0.5);
     checkState(sizeT1 + sizeT2 <= maximumCacheSize);
   }
 

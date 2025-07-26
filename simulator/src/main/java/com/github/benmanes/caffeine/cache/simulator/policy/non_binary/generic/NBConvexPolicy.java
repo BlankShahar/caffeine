@@ -74,7 +74,6 @@ public final class NBConvexPolicy implements Policy {
   }
 
   private void onWrite(AccessEvent event) {
-    policyStats.recordOperation();
     onDelete(event);
     onRead(event);
   }
@@ -93,7 +92,6 @@ public final class NBConvexPolicy implements Policy {
   private void onRead(AccessEvent event) {
     long itemKey = event.key();
     var existingPrefix = scoreMinHeap.get(itemKey);
-    policyStats.recordOperation();
 
     if (existingPrefix != null) {
       // prefix exist (partial hit)
@@ -161,7 +159,6 @@ public final class NBConvexPolicy implements Policy {
     if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
       long lastRequestItemKey = requests.remove();
       var lastRequestedPrefix = scoreMinHeap.get(lastRequestItemKey);
-      policyStats.recordOperation();
 
       if (lastRequestedPrefix != null) {
         lastRequestedPrefix.requestsCountInPeriod--;
@@ -214,9 +211,6 @@ public final class NBConvexPolicy implements Policy {
     prefix.insertChunk();
     currentCacheSize++;
 
-//    if (scoreMinHeap.contains(prefix.itemKey)) {
-//      scoreMinHeap.remove(prefix.itemKey);
-//    }
     scoreMinHeap.upsert(prefix.itemKey, prefix);
 
     policyStats.recordOperation();

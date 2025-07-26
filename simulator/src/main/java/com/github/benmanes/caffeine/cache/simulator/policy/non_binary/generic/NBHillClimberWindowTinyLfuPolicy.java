@@ -32,7 +32,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   private final double STEP_SIZE;        // Δq
 
   /* ------------------------------  global state  -------------------------------- */
-  private final PolicyStats stats;
+  private final PolicyStats policyStats;
   final Queue<Long> requests;
   private final SearchableMinHeap<Long, Prefix> heapLRU;  // recency order
   private final SearchableMinHeap<Long, Prefix> heapLFU;  // score order
@@ -63,7 +63,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     this.maxCacheSizeLRU = maximumCacheSize / 2;
     this.maxCacheSizeLFU = maximumCacheSize - maxCacheSizeLRU;
 
-    this.stats = new PolicyStats(name());
+    this.policyStats = new PolicyStats(name());
     this.sketch = new PeriodicResetCountMin4(settings.config());
     this.requests = new ArrayDeque<>();
     this.heapLRU = new SearchableMinHeap<>((int) maximumCacheSize, this::compareLRU);
@@ -79,8 +79,11 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
 
     if (heapLRU.contains(prefix.itemKey)) {
       heapLRU.upsert(prefix.itemKey, prefix);
-    } else if (heapLFU.contains(prefix.itemKey))
+      policyStats.recordOperation();
+    } else if (heapLFU.contains(prefix.itemKey)) {
       heapLFU.upsert(prefix.itemKey, prefix);
+      policyStats.recordOperation();
+    }
   }
 
   @Override
@@ -102,7 +105,6 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   }
 
   private void onWrite(AccessEvent event) {
-    stats.recordOperation();
     onDelete(event);
     onRead(event);
   }
@@ -112,24 +114,23 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exists, remove it
       heapLRU.remove(existingPrefix.itemKey);
+      policyStats.recordOperation();
       currentCacheSizeLRU -= existingPrefix.currentSize;
-      stats.recordEviction();
-      stats.recordOperation();
+      policyStats.recordEviction();
     }
 
     existingPrefix = heapLFU.get(event.key());
     if (existingPrefix != null) {
       // prefix exists, remove it
       heapLFU.remove(existingPrefix.itemKey);
+      policyStats.recordOperation();
       currentCacheSizeLFU -= existingPrefix.currentSize;
-      stats.recordEviction();
-      stats.recordOperation();
+      policyStats.recordEviction();
     }
   }
 
   private void onRead(AccessEvent event) {
     opCounter++;
-    stats.recordOperation();
     long key = event.key();
     Prefix p = Optional.ofNullable(heapLFU.get(key)).orElse(heapLRU.get(key));
     if (p == null) {
@@ -255,6 +256,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   private void movePrefixToLru(Prefix v) {
     currentCacheSizeLFU -= v.currentSize;
     heapLFU.remove(v.itemKey);
+    policyStats.recordOperation();
 
     if (v.currentSize > maxCacheSizeLRU) {
       // There isn't enough space for the whole prefix
@@ -270,7 +272,10 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
       waterDrawLru(v.currentSize);
       currentCacheSizeLRU += v.currentSize;
     }
-    if (!v.isEmpty()) heapLRU.upsert(v.itemKey, v);
+    if (!v.isEmpty()) {
+      heapLRU.upsert(v.itemKey, v);
+      policyStats.recordOperation();
+    }
   }
 
   /* ------------------------------  LFU cache (main)  --------------------------- */
@@ -308,8 +313,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     currentCacheSizeLFU -= removedSize;
     updateHeap(heapLFU, prefix);
 
-    stats.recordOperation();
-    stats.recordEviction();
+    policyStats.recordEviction();
 
     assert prefix.currentSize >= 0 : "Prefix size cannot be negative";
     assert currentCacheSizeLFU >= 0 : "Current LFU cache size cannot be negative";
@@ -323,8 +327,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     currentCacheSizeLRU += addedSize;
     updateHeap(heapLRU, prefix);
 
-    stats.recordOperation();
-    stats.recordAdmission();
+    policyStats.recordAdmission();
 
     assert prefix.currentSize <= prefix.fullItemSize : "Prefix size exceeds its full size (current time: " + currentTime + ")";
   }
@@ -337,8 +340,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     currentCacheSizeLFU += addedSize;
     updateHeap(heapLFU, prefix);
 
-    stats.recordOperation();
-    stats.recordAdmission();
+    policyStats.recordAdmission();
 
     assert prefix.currentSize <= prefix.fullItemSize : "Prefix size exceeds its full size (current time: " + currentTime + ")";
   }
@@ -351,8 +353,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
     currentCacheSizeLRU -= removedSize;
     updateHeap(heapLRU, prefix);
 
-    stats.recordOperation();
-    stats.recordEviction();
+    policyStats.recordEviction();
 
     assert prefix.currentSize >= 0 : "Prefix size cannot be negative";
     assert currentCacheSizeLRU >= 0 : "Current LRU cache size cannot be negative";
@@ -361,6 +362,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   private void movePrefixToLfu(Prefix v) {
     currentCacheSizeLRU -= v.currentSize;
     heapLRU.remove(v.itemKey);
+    policyStats.recordOperation();
 
     if (v.currentSize > maxCacheSizeLFU) {
       // There isn't enough space for the whole prefix
@@ -375,19 +377,28 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
       waterDrawLfu(v.currentSize);
       currentCacheSizeLFU += v.currentSize;
     }
-    if (!v.isEmpty()) heapLFU.upsert(v.itemKey, v);
+    if (!v.isEmpty()) {
+      heapLFU.upsert(v.itemKey, v);
+      policyStats.recordOperation();
+    }
   }
 
   /* ------------------------------  helpers  ------------------------------------ */
   private void recordDelayStats(Prefix p, double srcDelay) {
-    stats.addDelay(TimeCalculations.calculateUnderflowDelay(srcDelay, p.fullItemSize(), p.currentSize(), Consts.BANDWIDTH));
+    policyStats.addDelay(TimeCalculations.calculateUnderflowDelay(srcDelay, p.fullItemSize(), p.currentSize(), Consts.BANDWIDTH));
     double latency = calculateLatency(srcDelay, p.fullItemSize(), p.currentSize(), Consts.BANDWIDTH);
-    stats.addLatency(latency);
+    policyStats.addLatency(latency);
   }
 
   private void updateHeap(SearchableMinHeap<Long, Prefix> heap, Prefix prefix) {
-    if (prefix.isEmpty() && heap.contains(prefix.itemKey)) heap.remove(prefix.itemKey);
-    else heap.upsert(prefix.itemKey, prefix);
+    if (prefix.isEmpty() && heap.contains(prefix.itemKey)) {
+      heap.remove(prefix.itemKey);
+      policyStats.recordOperation();
+    }
+    else {
+      heap.upsert(prefix.itemKey, prefix);
+      policyStats.recordOperation();
+    }
   }
 
   private int compareLRU(long a, long b) {
@@ -409,7 +420,7 @@ public final class NBHillClimberWindowTinyLfuPolicy implements Policy {
   /* ------------------------------  plumbing  ----------------------------------- */
   @Override
   public PolicyStats stats() {
-    return stats;
+    return policyStats;
   }
 
   @Override

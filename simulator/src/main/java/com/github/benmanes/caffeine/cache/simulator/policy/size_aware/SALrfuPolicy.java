@@ -15,7 +15,7 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Tim
 public final class SALrfuPolicy implements Policy {
   private static final double LAMBDA = 2.0; // Decay rate in time units
 
-  private final PolicyStats stats;
+  private final PolicyStats policyStats;
   private final SearchableMinHeap<Long, Node> heap;
   private final long maximumCacheSize;
   private long currentCacheSize;
@@ -24,7 +24,7 @@ public final class SALrfuPolicy implements Policy {
   public SALrfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.maximumCacheSize = settings.maximumSize();
-    this.stats = new PolicyStats(name());
+    this.policyStats = new PolicyStats(name());
     this.heap = new SearchableMinHeap<>((int) maximumCacheSize, this::compareNodes);
     this.currentCacheSize = 0;
     this.currentTime = 0;
@@ -49,7 +49,7 @@ public final class SALrfuPolicy implements Policy {
   }
 
   private void onWrite(AccessEvent event) {
-    stats.recordOperation();
+    policyStats.recordOperation();
     onDelete(event);
     onRead(event);
   }
@@ -59,14 +59,14 @@ public final class SALrfuPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exists, remove it
       heap.remove(existingPrefix.key);
+      policyStats.recordOperation();
       currentCacheSize -= existingPrefix.size;
-      stats.recordEviction();
-      stats.recordOperation();
+      policyStats.recordEviction();
     }
   }
 
   private void onRead(AccessEvent event) {
-    stats.recordOperation();
+    policyStats.recordOperation();
     currentTime++;
 
     Node node = heap.get(event.key());
@@ -76,14 +76,14 @@ public final class SALrfuPolicy implements Policy {
     }
     if (!heap.contains(node.key)) {
       if (event.operation() == READ) {
-        stats.addDelay(event.retrievalDelay());
+        policyStats.addDelay(event.retrievalDelay());
         double latency = calculateLatency(
           event.retrievalDelay(),
           event.itemSize(),
           0,
           Consts.BANDWIDTH
         );
-        stats.addLatency(latency);
+        policyStats.addLatency(latency);
       }
     } else {
       if (event.operation() == READ) {
@@ -93,14 +93,14 @@ public final class SALrfuPolicy implements Policy {
           event.itemSize(),
           Consts.BANDWIDTH
         );
-        stats.addLatency(latency);
+        policyStats.addLatency(latency);
       }
     }
 
     updateScore(node);
 
     if (node.size > maximumCacheSize) {
-      stats.recordRejection();
+      policyStats.recordRejection();
       return;
     }
 
@@ -109,11 +109,12 @@ public final class SALrfuPolicy implements Policy {
         evict();
       }
       currentCacheSize += node.size;
-      stats.recordAdmission();
+      policyStats.recordAdmission();
     }
 
     if (node.isEmpty() && heap.contains(node.key)) heap.remove(node.key);
     else heap.upsert(node.key, node);
+    policyStats.recordOperation();
   }
 
   private void updateScore(Node node) {
@@ -125,7 +126,7 @@ public final class SALrfuPolicy implements Policy {
   private void evict() {
     Node victim = heap.extractMin().value();
     currentCacheSize -= victim.size;
-    stats.recordEviction();
+    policyStats.recordEviction();
   }
 
   private int compareNodes(long k1, long k2) {
@@ -140,7 +141,7 @@ public final class SALrfuPolicy implements Policy {
 
   @Override
   public PolicyStats stats() {
-    return stats;
+    return policyStats;
   }
 
   @Override

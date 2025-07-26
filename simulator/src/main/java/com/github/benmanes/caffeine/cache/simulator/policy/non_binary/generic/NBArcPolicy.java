@@ -72,7 +72,6 @@ public final class NBArcPolicy implements Policy {
   }
 
   private void onWrite(AccessEvent event) {
-    policyStats.recordOperation();
     onDelete(event);
     onRead(event);
   }
@@ -82,20 +81,20 @@ public final class NBArcPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exists, remove it
       heapT1.remove(existingPrefix.itemKey);
+      policyStats.recordOperation();
       sizeT1 -= existingPrefix.currentSize;
       if (existingPrefix.isEmpty()) existingPrefix.queue = Q.NONE;
       policyStats.recordEviction();
-      policyStats.recordOperation();
     }
 
     existingPrefix = heapT2.get(event.key());
     if (existingPrefix != null) {
       // prefix exists, remove it
       heapT2.remove(existingPrefix.itemKey);
+      policyStats.recordOperation();
       sizeT2 -= existingPrefix.currentSize;
       if (existingPrefix.isEmpty()) existingPrefix.queue = Q.NONE;
       policyStats.recordEviction();
-      policyStats.recordOperation();
     }
 
     if (B1.containsKey(event.key())) {
@@ -104,7 +103,6 @@ public final class NBArcPolicy implements Policy {
       sizeB1 -= prefix.fullItemSize;
       if (prefix.isEmpty()) prefix.queue = Q.NONE;
       policyStats.recordEviction();
-      policyStats.recordOperation();
     }
 
     if (B2.containsKey(event.key())) {
@@ -113,12 +111,10 @@ public final class NBArcPolicy implements Policy {
       sizeB2 -= prefix.fullItemSize;
       if (prefix.isEmpty()) prefix.queue = Q.NONE;
       policyStats.recordEviction();
-      policyStats.recordOperation();
     }
   }
 
   private void onRead(AccessEvent event) {
-    policyStats.recordOperation();
     long itemKey = event.key();
     Prefix prefix = Optional.ofNullable(heapT1.get(itemKey)).orElse(heapT2.get(itemKey));
     if (prefix == null) {
@@ -257,6 +253,7 @@ public final class NBArcPolicy implements Policy {
     if (prefix.fullItemSize > maxSizeT2) {
       if (heapT1.contains(prefix.itemKey)) {
         heapT1.remove(prefix.itemKey);
+        policyStats.recordOperation();
         sizeT1 -= prefix.currentSize;
       }
       if (prefix.queue == Q.T1)
@@ -269,6 +266,7 @@ public final class NBArcPolicy implements Policy {
 
     if (heapT1.contains(prefix.itemKey)) {
       heapT1.remove(prefix.itemKey);
+      policyStats.recordOperation();
       sizeT1 -= prefix.currentSize;
     } else if (prefix.queue == Q.B1) {
       B1.remove(prefix.itemKey);
@@ -285,6 +283,7 @@ public final class NBArcPolicy implements Policy {
       waterDraw(Q.T2, prefix.currentSize);
       sizeT2 += prefix.currentSize;
       heapT2.upsert(prefix.itemKey, prefix);
+      policyStats.recordOperation();
     }
     prefix.queue = Q.T2;
   }
@@ -353,6 +352,7 @@ public final class NBArcPolicy implements Policy {
 
     SearchableMinHeap<Long, Prefix> heap = prefix.queue == Q.T1 ? heapT1 : heapT2;
     heap.upsert(prefix.itemKey, prefix);
+    policyStats.recordOperation();
     policyStats.recordAdmission();
 
     assert prefix.currentSize <= prefix.fullItemSize : "Prefix size exceeds its full size (current time: " + currentTime + ")";
@@ -369,8 +369,14 @@ public final class NBArcPolicy implements Policy {
     else sizeT2 -= removedSize;
 
     SearchableMinHeap<Long, Prefix> heap = prefix.queue == Q.T1 ? heapT1 : heapT2;
-    if (!prefix.isEmpty()) heap.upsert(prefix.itemKey, prefix);
-    else if (heap.contains(prefix.itemKey)) heap.remove(prefix.itemKey);
+    if (!prefix.isEmpty()) {
+      heap.upsert(prefix.itemKey, prefix);
+      policyStats.recordOperation();
+    }
+    else if (heap.contains(prefix.itemKey)) {
+      heap.remove(prefix.itemKey);
+      policyStats.recordOperation();
+    }
     policyStats.recordEviction();
 
     if (prefix.isEmpty())

@@ -46,7 +46,6 @@ public final class SALruPolicy implements Policy {
   }
 
   private void onWrite(AccessEvent event) {
-    policyStats.recordOperation();
     onDelete(event);
     onRead(event);
   }
@@ -56,9 +55,9 @@ public final class SALruPolicy implements Policy {
     if (existingPrefix != null) {
       // prefix exists, remove it
       minHeap.remove(existingPrefix.key);
+      policyStats.recordOperation();
       currentCacheSize -= existingPrefix.size;
       policyStats.recordEviction();
-      policyStats.recordOperation();
     }
   }
 
@@ -67,14 +66,13 @@ public final class SALruPolicy implements Policy {
     long itemSize = event.itemSize();
     double retrievalDelay = event.retrievalDelay();
 
-    policyStats.recordOperation();
-
     Item item = minHeap.get(itemKey);
     if (item != null) {
       // Hit
       policyStats.recordHit();
       item.lastAccessTime = currentTime;
       minHeap.upsert(itemKey, item);
+      policyStats.recordOperation();
 
       if (event.operation() == READ) {
         double latency = calculateLatency(
@@ -113,6 +111,7 @@ public final class SALruPolicy implements Policy {
 
       Item newItem = new Item(itemKey, itemSize, currentTime);
       minHeap.upsert(itemKey, newItem);
+      policyStats.recordOperation();
       currentCacheSize += itemSize;
       policyStats.recordAdmission();
     }

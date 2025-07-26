@@ -55,7 +55,6 @@ public final class NBLrfuPolicy implements Policy {
   }
 
   private void onWrite(AccessEvent event) {
-    policyStats.recordOperation();
     onDelete(event);
     onRead(event);
   }
@@ -74,7 +73,6 @@ public final class NBLrfuPolicy implements Policy {
   private void onRead(AccessEvent event) {
     long itemKey = event.key();
     var existingPrefix = scoreMinHeap.get(itemKey);
-    policyStats.recordOperation();
 
     if (existingPrefix != null) {
       existingPrefix.lastRequestTime = currentTime;
