@@ -11,6 +11,9 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Lo
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
@@ -28,6 +31,14 @@ public final class NBLruPolicy implements Policy {
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
   Source source;
 
+  private static final String CSV_FILE_PATH = "C:\\Users\\gil\\Desktop\\2nd Degree\\Thesis\\caffeine\\simulator\\build\\reports\\simulate\\NB_LRU-request_stats.csv";
+  private static BufferedWriter csvWriter;
+  private static int linesSinceFlush = 0;
+  private static final int FLUSH_INTERVAL = 10000; // flush every 10k lines
+  private double lastTotalDelay = 0;
+  private double lastTotalLatency = 0;
+  private long lastTotalOperations = 0;
+
   public NBLruPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
@@ -40,6 +51,12 @@ public final class NBLruPolicy implements Policy {
 
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
+
+    try {
+      csvWriter = new BufferedWriter(new FileWriter(CSV_FILE_PATH, true));
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
   }
 
   @Override
@@ -58,6 +75,7 @@ public final class NBLruPolicy implements Policy {
       default:
         throw new IllegalArgumentException("Unsupported operation: " + event.operation());
     }
+    appendRequestStatsToCsv();
   }
 
   private void onWrite(AccessEvent event) {
@@ -208,8 +226,43 @@ public final class NBLruPolicy implements Policy {
     return p1.lruCompareTo(p2);
   }
 
+  private void appendRequestStatsToCsv() {
+    double currentDelay = policyStats.totalDelay();
+    double currentLatency = policyStats.totalLatency();
+    long currentOperations = policyStats.operationCount();
+
+    double deltaDelay = currentDelay - lastTotalDelay;
+    double deltaLatency = currentLatency - lastTotalLatency;
+    long deltaOperations = currentOperations - lastTotalOperations;
+
+    try {
+      csvWriter.write(deltaDelay + "," + deltaLatency + "," + deltaOperations);
+      csvWriter.newLine();
+      linesSinceFlush++;
+
+      if (linesSinceFlush >= FLUSH_INTERVAL) {
+        csvWriter.flush();
+        linesSinceFlush = 0;
+      }
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+
+    // עדכון הערכים האחרונים
+    lastTotalDelay = currentDelay;
+    lastTotalLatency = currentLatency;
+    lastTotalOperations = currentOperations;
+  }
+
+
   @Override
   public void finished() {
+    try {
+      csvWriter.flush();
+      csvWriter.close();
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
     Policy.super.finished();
   }
 
