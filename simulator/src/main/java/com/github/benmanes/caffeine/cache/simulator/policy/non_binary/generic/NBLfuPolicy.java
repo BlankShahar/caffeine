@@ -35,7 +35,6 @@ public final class NBLfuPolicy implements Policy {
   private final PeriodicResetCountMin4 sketch;
   int currentTime;
 
-  private static String CSV_FILE_PATH = "/home/nadavk/shahar-thesis/caffeine/simulator/build/reports/simulate/";
   private static BufferedWriter csvWriter;
   private static int linesSinceFlush = 0;
   private static final int FLUSH_INTERVAL = 1_000_000; // flush every 1M lines
@@ -58,12 +57,11 @@ public final class NBLfuPolicy implements Policy {
     this.currentTime = 0;
 
     try {
-      csvWriter = new BufferedWriter(new FileWriter(CSV_FILE_PATH, true));
+      String csvFilePath = "/home/nadavk/shahar-thesis/caffeine/simulator/build/reports/simulate/NB_LFU-stats_per_request-" + maximumCacheSize + ".csv";
+      csvWriter = new BufferedWriter(new FileWriter(csvFilePath, true));
     } catch (IOException e) {
       e.printStackTrace();
     }
-
-    CSV_FILE_PATH += "NB_LFU-stats_per_request-" + maximumCacheSize + ".csv";
   }
 
   @Override
