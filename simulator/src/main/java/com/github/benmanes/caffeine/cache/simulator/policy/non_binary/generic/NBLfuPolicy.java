@@ -15,7 +15,10 @@ import com.typesafe.config.Config;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Queue;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
@@ -82,8 +85,9 @@ public final class NBLfuPolicy implements Policy {
     }
 
     Prefix prefix = scoreMinHeap.get(event.key());
-    if (prefix != null) appendRequestStatsToCsv(prefix.currentSize, prefix.fullItemSize);
-    else appendRequestStatsToCsv(0, event.itemSize());
+    if (prefix != null)
+      appendRequestStatsToCsv(event.key(), prefix.currentSize, prefix.fullItemSize);
+    else appendRequestStatsToCsv(event.key(), 0, event.itemSize());
 
   }
 
@@ -129,7 +133,7 @@ public final class NBLfuPolicy implements Policy {
 
   private void handleRequestsFrequency(Prefix prefix) {
     sketch.increment(prefix.itemKey);
-    prefix.frequency = sketch.frequency(prefix.itemKey);
+    prefix.frequency = sketch.frequency(prefix.itemKey) / sketch.period;
 
     if (scoreMinHeap.contains(prefix.itemKey)) {
       scoreMinHeap.upsert(prefix.itemKey, prefix);
@@ -273,13 +277,15 @@ public final class NBLfuPolicy implements Policy {
   private double lfuScoreAfterInsertion(Prefix prefix) {
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       Math.min(prefix.currentSize + Consts.CHUNK_SIZE, prefix.fullItemSize), Consts.BANDWIDTH);
-    return sketch.frequency(prefix.itemKey) * (1 - source.calculateCDF(prefixTransmissionTime));
+    return (double) sketch.frequency(prefix.itemKey) / sketch.period
+      * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   private double lfuScoreAfterEviction(Prefix prefix) {
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
       Math.max(0, prefix.currentSize - Consts.CHUNK_SIZE), Consts.BANDWIDTH);
-    return sketch.frequency(prefix.itemKey) * (1 - source.calculateCDF(prefixTransmissionTime));
+    return (double) sketch.frequency(prefix.itemKey) / sketch.period
+      * (1 - source.calculateCDF(prefixTransmissionTime));
   }
 
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
@@ -294,7 +300,7 @@ public final class NBLfuPolicy implements Policy {
     return Double.compare(lfuScoreAfterEviction(p1), lfuScoreAfterEviction(p2));
   }
 
-  private void appendRequestStatsToCsv(long currentPrefixSize, long fullItemSize) {
+  private void appendRequestStatsToCsv(long itemKey, long currentPrefixSize, long fullItemSize) {
     double currentDelay = policyStats.totalDelay();
     double currentLatency = policyStats.totalLatency();
     long currentOperations = policyStats.operationCount();
@@ -303,15 +309,22 @@ public final class NBLfuPolicy implements Policy {
     double deltaLatency = currentLatency - lastTotalLatency;
     long deltaOperations = currentOperations - lastTotalOperations;
 
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      Math.max(0, currentPrefixSize - Consts.CHUNK_SIZE), Consts.BANDWIDTH);
+    double cdf = 1 - source.calculateCDF(prefixTransmissionTime);
 
     try {
-      csvWriter.write(deltaDelay + ","
-        + deltaLatency + ","
-        + deltaOperations + ","
-        + scoreMinHeap.idxMap.size() + ","
-        + currentPrefixSize + ","
-        + Math.ceil((double) currentPrefixSize / Consts.CHUNK_SIZE) + ","
-        + fullItemSize + ","
+      csvWriter.write(
+        deltaDelay + "," // delay
+          + deltaLatency + "," // latency
+          + deltaOperations + "," // operations
+          + scoreMinHeap.idxMap.size() + "," // number of prefixes in the heap
+          + currentPrefixSize + "," // cached size
+          + Math.ceil((double) currentPrefixSize / Consts.CHUNK_SIZE) + "," // cached chunks
+          + fullItemSize + "," // full size
+          + sketch.frequency(itemKey) + "," // frequency
+          + sketch.period + ","// period
+          + cdf // cdf
       );
 
       csvWriter.newLine();
