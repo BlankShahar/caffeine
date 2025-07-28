@@ -1,6 +1,7 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.size_aware;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
+import com.github.benmanes.caffeine.cache.simulator.admission.countmin4.PeriodicResetCountMin4;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
@@ -15,19 +16,27 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Tim
 public final class SALfuPolicy implements Policy {
   final PolicyStats policyStats;
   final SearchableMinHeap<Long, Item> minHeap;
+  private final PeriodicResetCountMin4 sketch;
   final long maximumCacheSize;
   long currentCacheSize;
+  int currentTime;
 
   public SALfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
     this.minHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::compareItems);
+    this.sketch = new PeriodicResetCountMin4(settings.config());
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
+    this.currentTime = 0;
   }
 
   @Override
   public void record(AccessEvent event) {
+    currentTime++;
+    if (currentTime % sketch.period == 0)
+      minHeap.makeHeap();
+
     switch (event.operation()) {
       case READ:
         onRead(event);
@@ -59,7 +68,22 @@ public final class SALfuPolicy implements Policy {
     }
   }
 
+  private void handleRequestsFrequency(long itemKey) {
+    sketch.increment(itemKey);
+    Item prefix = minHeap.get(itemKey);
+
+    if (prefix != null) {
+      prefix.frequency = sketch.frequency(itemKey);
+      minHeap.upsert(itemKey, prefix);
+      policyStats.recordOperation();
+    }
+  }
+
   private void onRead(AccessEvent event) {
+    if (currentCacheSize >= maximumCacheSize)
+      sketch.ensureCapacity(2_000_000);
+    handleRequestsFrequency(event.key());
+
     long itemKey = event.key();
     long itemSize = event.itemSize();
     double retrievalDelay = event.retrievalDelay();
@@ -68,7 +92,6 @@ public final class SALfuPolicy implements Policy {
     if (item != null) {
       // Hit
       policyStats.recordHit();
-      item.frequency++;
       minHeap.upsert(itemKey, item);
       policyStats.recordOperation();
 
@@ -119,10 +142,7 @@ public final class SALfuPolicy implements Policy {
   }
 
   public int compareItems(long itemKey1, long itemKey2) {
-    Item p1 = minHeap.get(itemKey1);
-    Item p2 = minHeap.get(itemKey2);
-    assert p1 != null && p2 != null;
-    return Long.compare(p1.frequency, p2.frequency);
+    return Long.compare(sketch.frequency(itemKey1), sketch.frequency(itemKey2));
   }
 
   @Override

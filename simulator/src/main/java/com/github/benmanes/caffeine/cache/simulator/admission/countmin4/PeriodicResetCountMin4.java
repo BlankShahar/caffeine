@@ -31,7 +31,7 @@ public final class PeriodicResetCountMin4 extends CountMin4 {
   final Membership doorkeeper;
 
   int additions;
-  int period;
+  public int period;
 
   public PeriodicResetCountMin4(Config config) {
     super(config);

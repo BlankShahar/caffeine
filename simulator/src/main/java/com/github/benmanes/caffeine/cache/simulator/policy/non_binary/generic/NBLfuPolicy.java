@@ -15,10 +15,7 @@ import com.typesafe.config.Config;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.ArrayDeque;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Queue;
+import java.util.*;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
@@ -43,8 +40,6 @@ public final class NBLfuPolicy implements Policy {
   private double lastTotalLatency = 0;
   private long lastTotalOperations = 0;
 
-  SearchableMinHeap<Long, Prefix> tempHeap;
-
   public NBLfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
@@ -54,8 +49,6 @@ public final class NBLfuPolicy implements Policy {
     this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
     this.sketch = new PeriodicResetCountMin4(settings.config());
-
-    tempHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
 
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
@@ -71,14 +64,9 @@ public final class NBLfuPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     currentTime++;
-    if (currentTime % 20_000_000 == 0) {
-      tempHeap.clear();
-      for (Prefix prefix : scoreMinHeap.valuesMap.values())
-        tempHeap.upsert(prefix.itemKey, prefix);
+    if (currentTime % sketch.period == 0)
+      scoreMinHeap.makeHeap();
 
-      scoreMinHeap.clear();
-      scoreMinHeap = tempHeap;
-    }
     switch (event.operation()) {
       case READ:
         onRead(event);
