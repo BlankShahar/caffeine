@@ -31,7 +31,7 @@ public final class NBLruPolicy implements Policy {
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
   Source source;
 
-  private static final String CSV_FILE_PATH = "/home/nadavk/shahar-thesis/caffeine/simulator/build/reports/simulate/stats_per_request.csv";
+  private static String CSV_FILE_PATH = "/home/nadavk/shahar-thesis/caffeine/simulator/build/reports/simulate/";
   private static BufferedWriter csvWriter;
   private static int linesSinceFlush = 0;
   private static final int FLUSH_INTERVAL = 10000; // flush every 10k lines
@@ -57,6 +57,8 @@ public final class NBLruPolicy implements Policy {
     } catch (IOException e) {
       e.printStackTrace();
     }
+
+    CSV_FILE_PATH += "NB_LRU-stats_per_request-" + maximumCacheSize + ".csv";
   }
 
   @Override
