@@ -31,7 +31,7 @@ public final class NBLfuPolicy implements Policy {
   long currentCacheSize;
   final PolicyStats policyStats;
   final Source source;
-  final SearchableMinHeap<Long, Prefix> scoreMinHeap;
+  SearchableMinHeap<Long, Prefix> scoreMinHeap;
   private final PeriodicResetCountMin4 sketch;
   int currentTime;
 
@@ -43,6 +43,8 @@ public final class NBLfuPolicy implements Policy {
   private double lastTotalLatency = 0;
   private long lastTotalOperations = 0;
 
+  SearchableMinHeap<Long, Prefix> tempHeap;
+
   public NBLfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
@@ -53,6 +55,7 @@ public final class NBLfuPolicy implements Policy {
     this.source = new NormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
     this.sketch = new PeriodicResetCountMin4(settings.config());
 
+    tempHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
 
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
@@ -68,6 +71,14 @@ public final class NBLfuPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     currentTime++;
+    if (currentTime % 20_000_000 == 0) {
+      tempHeap.clear();
+      for (Prefix prefix : scoreMinHeap.valuesMap.values())
+        tempHeap.upsert(prefix.itemKey, prefix);
+
+      scoreMinHeap.clear();
+      scoreMinHeap = tempHeap;
+    }
     switch (event.operation()) {
       case READ:
         onRead(event);
@@ -164,7 +175,7 @@ public final class NBLfuPolicy implements Policy {
     while (currentCacheSize + addSize > maximumCacheSize) {
       Prefix victim = findVictim();
       if (
-        prefix.lfuScoreAfterInsertion() < victim.lfuScoreAfterEviction()
+        lfuScoreAfterInsertion(prefix) < lfuScoreAfterEviction(victim)
           || prefix.itemKey == victim.itemKey
       ) {
         abortEvictions(victimToOriginalSize);
@@ -271,14 +282,29 @@ public final class NBLfuPolicy implements Policy {
     return TimeCalculations.calculateUnderflowDelay(sourceDelay, prefix.fullItemSize(), prefix.currentSize(), Consts.BANDWIDTH);
   }
 
+  private double lfuScoreAfterInsertion(Prefix prefix) {
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      Math.min(prefix.currentSize + Consts.CHUNK_SIZE, prefix.fullItemSize), Consts.BANDWIDTH);
+    return sketch.frequency(prefix.itemKey) * (1 - source.calculateCDF(prefixTransmissionTime));
+  }
+
+  private double lfuScoreAfterEviction(Prefix prefix) {
+    double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+      Math.max(0, prefix.currentSize - Consts.CHUNK_SIZE), Consts.BANDWIDTH);
+    return sketch.frequency(prefix.itemKey) * (1 - source.calculateCDF(prefixTransmissionTime));
+  }
+
   public int comparePrefixes(long prefixKey1, long prefixKey2) {
     Prefix p1 = scoreMinHeap.get(prefixKey1);
     Prefix p2 = scoreMinHeap.get(prefixKey2);
     assert p1 != null;
     assert p2 != null;
-    return p1.lfuCompareTo(p2);
+    return lfuCompareTo(p1, p2);
   }
 
+  public int lfuCompareTo(Prefix p1, Prefix p2) {
+    return Double.compare(lfuScoreAfterEviction(p1), lfuScoreAfterEviction(p2));
+  }
 
   private void appendRequestStatsToCsv(long currentPrefixSize, long fullItemSize) {
     double currentDelay = policyStats.totalDelay();
@@ -346,24 +372,6 @@ public final class NBLfuPolicy implements Policy {
       this.currentSize = 0;
     }
 
-    public double lfuScoreAfterInsertion() {
-      // Idea - frequency times the probability of not experiencing delay
-      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        Math.min(currentSize + Consts.CHUNK_SIZE, fullItemSize), Consts.BANDWIDTH);
-      return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double lfuScoreAfterEviction() {
-      // Idea - frequency times the probability of not experiencing delay
-      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-        Math.max(0, currentSize - Consts.CHUNK_SIZE), Consts.BANDWIDTH);
-      return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
-    }
-
-    public double frequency() {
-      return (double) frequency / Consts.REQUESTS_FREQUENCY_PERIOD;
-    }
-
     public long insertChunk() {
       long addSize = Math.min(fullItemSize - currentSize, Consts.CHUNK_SIZE);
       currentSize += addSize;
@@ -391,11 +399,6 @@ public final class NBLfuPolicy implements Policy {
 
     public boolean isEmpty() {
       return currentSize == 0;
-    }
-
-
-    public int lfuCompareTo(Prefix other) {
-      return Double.compare(this.lfuScoreAfterEviction(), other.lfuScoreAfterEviction());
     }
   }
 }
