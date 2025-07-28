@@ -26,7 +26,7 @@ public class SearchableMinHeap<K, V> {
   final private static float DEFAULT_LOAD_FACTOR = 1.5f;
   protected List<K> heap;
   public Map<K, V> valuesMap;
-  protected Map<K, Integer> idxMap;
+  public Map<K, Integer> idxMap;
   public int size;
   protected int maxSize;
   protected Comparator<? super K> c;

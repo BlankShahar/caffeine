@@ -1,6 +1,7 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.non_binary.generic;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
+import com.github.benmanes.caffeine.cache.simulator.admission.countmin4.PeriodicResetCountMin4;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
@@ -11,7 +12,12 @@ import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Lo
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.Source;
 import com.typesafe.config.Config;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Queue;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
@@ -26,7 +32,16 @@ public final class NBLfuPolicy implements Policy {
   final PolicyStats policyStats;
   final Source source;
   final SearchableMinHeap<Long, Prefix> scoreMinHeap;
+  private final PeriodicResetCountMin4 sketch;
   int currentTime;
+
+  private static final String CSV_FILE_PATH = "C:\\Users\\gil\\Desktop\\2nd Degree\\Thesis\\caffeine\\simulator\\build\\reports\\simulate\\stats_per_request.csv";
+  private static BufferedWriter csvWriter;
+  private static int linesSinceFlush = 0;
+  private static final int FLUSH_INTERVAL = 1_000_000; // flush every 1M lines
+  private double lastTotalDelay = 0;
+  private double lastTotalLatency = 0;
+  private long lastTotalOperations = 0;
 
   public NBLfuPolicy(Config config) {
     var settings = new BasicSettings(config);
@@ -36,11 +51,18 @@ public final class NBLfuPolicy implements Policy {
 
     this.scoreMinHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::comparePrefixes);
     this.source = new LogNormalSource(Consts.SOURCE_KEY, Consts.SOURCE_MEAN, Consts.SOURCE_STD);
+    this.sketch = new PeriodicResetCountMin4(settings.config());
 
 
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
     this.currentTime = 0;
+
+    try {
+      csvWriter = new BufferedWriter(new FileWriter(CSV_FILE_PATH, true));
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
   }
 
   @Override
@@ -59,6 +81,11 @@ public final class NBLfuPolicy implements Policy {
       default:
         throw new IllegalArgumentException("Unsupported operation: " + event.operation());
     }
+
+    Prefix prefix = scoreMinHeap.get(event.key());
+    if (prefix != null) appendRequestStatsToCsv(prefix.currentSize, prefix.fullItemSize);
+    else appendRequestStatsToCsv(0, event.itemSize());
+
   }
 
   private void onWrite(AccessEvent event) {
@@ -78,6 +105,9 @@ public final class NBLfuPolicy implements Policy {
   }
 
   private void onRead(AccessEvent event) {
+    if (currentCacheSize >= maximumCacheSize)
+      sketch.ensureCapacity(2_000_000);
+
     long itemKey = event.key();
     var existingPrefix = scoreMinHeap.get(itemKey);
 
@@ -99,19 +129,12 @@ public final class NBLfuPolicy implements Policy {
   }
 
   private void handleRequestsFrequency(Prefix prefix) {
-    prefix.requestsCountInPeriod++;
-    if (scoreMinHeap.contains(prefix.itemKey)) scoreMinHeap.upsert(prefix.itemKey, prefix);
+    sketch.increment(prefix.itemKey);
+    prefix.frequency = sketch.frequency(prefix.itemKey);
 
-    requests.add(prefix.itemKey);
-    if (requests.size() == Consts.REQUESTS_FREQUENCY_PERIOD + 1) {
-      long lastRequestItemKey = requests.remove();
-      var lastRequestedPrefix = scoreMinHeap.get(lastRequestItemKey);
-
-      if (lastRequestedPrefix != null) {
-        lastRequestedPrefix.requestsCountInPeriod--;
-        if (scoreMinHeap.contains(lastRequestedPrefix.itemKey))
-          scoreMinHeap.upsert(lastRequestedPrefix.itemKey, lastRequestedPrefix);
-      }
+    if (scoreMinHeap.contains(prefix.itemKey)) {
+      scoreMinHeap.upsert(prefix.itemKey, prefix);
+      policyStats.recordOperation();
     }
   }
 
@@ -123,6 +146,41 @@ public final class NBLfuPolicy implements Policy {
     policyStats.addLatency(latency);
   }
 
+  private void abortEvictions(HashMap<Prefix, Long> victimToOriginalSize) {
+    for (Map.Entry<Prefix, Long> entry : victimToOriginalSize.entrySet()) {
+      Prefix victim = entry.getKey();
+      long originalSize = entry.getValue();
+
+      currentCacheSize += originalSize - victim.currentSize;
+      victim.currentSize = originalSize;
+      scoreMinHeap.upsert(victim.itemKey, victim);
+      policyStats.recordOperation(); // TODO: should it be here or only if we didn't abort?
+    }
+  }
+
+  private boolean makeRoom(Prefix prefix) {
+    HashMap<Prefix, Long> victimToOriginalSize = new HashMap<>();
+    long addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
+    while (currentCacheSize + addSize > maximumCacheSize) {
+      Prefix victim = findVictim();
+      if (
+        prefix.lfuScoreAfterInsertion() < victim.lfuScoreAfterEviction()
+          || prefix.itemKey == victim.itemKey
+      ) {
+        abortEvictions(victimToOriginalSize);
+        return false; // Abort and break
+      }
+
+      if (!victimToOriginalSize.containsKey(victim))
+        victimToOriginalSize.put(victim, victim.currentSize);
+
+      shrinkPrefix(victim); // remove chunk from the cache & update the heap
+      policyStats.recordOperation(); // TODO: should it be here or only if we didn't abort?
+    }
+
+    return true;
+  }
+
   private void waterFill(Prefix prefix) {
     long addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
     while (!prefix.isFull() && // stop if the prefix is full
@@ -132,18 +190,32 @@ public final class NBLfuPolicy implements Policy {
       addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
     }
 
-    if (prefix.isFull() || maximumCacheSize == 0) return;
+    if (maximumCacheSize == 0) return;
 
-    Prefix victim;
-    do {
+    while (!prefix.isFull()) {
+      if (!makeRoom(prefix))
+        break; // If makeRoom returns false, we abort the process
       extendPrefix(prefix);
+    }
 
-      do {
-        victim = findVictim();
-        shrinkPrefix(victim);
-      } while (currentCacheSize > maximumCacheSize);
+    // Prefix prefix
+    // while(prefix.currentSize < prefix.fullItemSize) {
 
-    } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
+    // boolean function (makeRoom):
+    // @return true iff evicted enough victims to make space for extending the prefix
+    // while (min(chunk,tail) doesn't fit in the cache) {
+    // victim=findVictim()
+    // if (prefix.lfuScoreAfterInsertion() < victim.lfuScoreAfterEviction() || prefix==victim)
+    // abort + break
+    // shrinkPrefix(victim); // remove chunk from the cache & update the heap
+    // addVictimToList(victim);
+    // }
+
+    // if makeRoom == false
+    //    break
+
+    // extendPrefix(prefix); // add min(chunk,tail) to the prefix & update the heap
+    // }
 
     assert currentCacheSize <= maximumCacheSize : "Current cache size exceeds the maximum cache size (current time: " + currentTime + ")";
     assert currentCacheSize >= 0 : "Current cache size cannot be negative (current time: " + currentTime + ")";
@@ -207,6 +279,44 @@ public final class NBLfuPolicy implements Policy {
     return p1.lfuCompareTo(p2);
   }
 
+
+  private void appendRequestStatsToCsv(long currentPrefixSize, long fullItemSize) {
+    double currentDelay = policyStats.totalDelay();
+    double currentLatency = policyStats.totalLatency();
+    long currentOperations = policyStats.operationCount();
+
+    double deltaDelay = currentDelay - lastTotalDelay;
+    double deltaLatency = currentLatency - lastTotalLatency;
+    long deltaOperations = currentOperations - lastTotalOperations;
+
+
+    try {
+      csvWriter.write(deltaDelay + ","
+        + deltaLatency + ","
+        + deltaOperations + ","
+        + scoreMinHeap.idxMap.size() + ","
+        + currentPrefixSize + ","
+        + Math.ceil((double) currentPrefixSize / Consts.CHUNK_SIZE) + ","
+        + fullItemSize + ","
+      );
+
+      csvWriter.newLine();
+      linesSinceFlush++;
+
+      if (linesSinceFlush >= FLUSH_INTERVAL) {
+        csvWriter.flush();
+        linesSinceFlush = 0;
+      }
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+
+    // עדכון הערכים האחרונים
+    lastTotalDelay = currentDelay;
+    lastTotalLatency = currentLatency;
+    lastTotalOperations = currentOperations;
+  }
+
   @Override
   public void finished() {
     Policy.super.finished();
@@ -226,24 +336,32 @@ public final class NBLfuPolicy implements Policy {
     final long itemKey, fullItemSize;
     final Source source;
     long currentSize;
-    long requestsCountInPeriod;
+    long frequency;
 
     public Prefix(long itemKey, long fullItemSize, Source source) {
       this.itemKey = itemKey;
       this.fullItemSize = fullItemSize;
       this.source = source;
-      this.requestsCountInPeriod = 0;
+      this.frequency = 0;
       this.currentSize = 0;
     }
 
-    public double lfuScore() {
+    public double lfuScoreAfterInsertion() {
       // Idea - frequency times the probability of not experiencing delay
-      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(currentSize, Consts.BANDWIDTH);
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        Math.min(currentSize + Consts.CHUNK_SIZE, fullItemSize), Consts.BANDWIDTH);
+      return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
+    }
+
+    public double lfuScoreAfterEviction() {
+      // Idea - frequency times the probability of not experiencing delay
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        Math.max(0, currentSize - Consts.CHUNK_SIZE), Consts.BANDWIDTH);
       return frequency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public double frequency() {
-      return (double) requestsCountInPeriod / Consts.REQUESTS_FREQUENCY_PERIOD;
+      return (double) frequency / Consts.REQUESTS_FREQUENCY_PERIOD;
     }
 
     public long insertChunk() {
@@ -277,7 +395,7 @@ public final class NBLfuPolicy implements Policy {
 
 
     public int lfuCompareTo(Prefix other) {
-      return Double.compare(this.lfuScore(), other.lfuScore());
+      return Double.compare(this.lfuScoreAfterEviction(), other.lfuScoreAfterEviction());
     }
   }
 }
