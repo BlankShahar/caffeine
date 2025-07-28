@@ -45,7 +45,7 @@ public abstract class CountMin4 implements Frequency {
 
     double countersMultiplier = settings.tinyLfu().countMin4().countersMultiplier();
     long counters = (long) (countersMultiplier * settings.maximumSize());
-    ensureCapacity(counters);
+    ensureCapacity(2_000_000);
   }
 
   /**
