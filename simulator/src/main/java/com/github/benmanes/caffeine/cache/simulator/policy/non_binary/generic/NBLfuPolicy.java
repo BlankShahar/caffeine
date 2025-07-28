@@ -35,7 +35,7 @@ public final class NBLfuPolicy implements Policy {
   private final PeriodicResetCountMin4 sketch;
   int currentTime;
 
-  private static final String CSV_FILE_PATH = "C:\\Users\\gil\\Desktop\\2nd Degree\\Thesis\\caffeine\\simulator\\build\\reports\\simulate\\stats_per_request.csv";
+  private static final String CSV_FILE_PATH = "/home/nadavk/shahar-thesis/caffeine/simulator/build/reports/simulate/stats_per_request.csv";
   private static BufferedWriter csvWriter;
   private static int linesSinceFlush = 0;
   private static final int FLUSH_INTERVAL = 1_000_000; // flush every 1M lines
