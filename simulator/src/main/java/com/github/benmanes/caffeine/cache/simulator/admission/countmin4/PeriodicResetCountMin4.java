@@ -56,7 +56,7 @@ public final class PeriodicResetCountMin4 extends CountMin4 {
     if (doorkeeper.mightContain(e)) {
       count++;
     }
-    return Math.min(count, 15);
+    return count;
   }
 
   @Override
