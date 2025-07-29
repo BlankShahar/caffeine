@@ -98,6 +98,9 @@ public class SAHillClimberWindowTinyLfuPolicy implements Policy {
 
   @Override
   public void record(AccessEvent event) {
+    if (Consts.CHUNK_SIZE > 0)
+      event.itemSize = Math.min(Consts.CHUNK_SIZE, event.itemSize);
+
     switch (event.operation()) {
       case READ:
         onRead(event);

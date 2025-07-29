@@ -16,7 +16,6 @@
 package com.github.benmanes.caffeine.cache.simulator.policy;
 
 import com.google.common.base.MoreObjects;
-import com.google.errorprone.annotations.Immutable;
 
 import java.util.Objects;
 
@@ -28,9 +27,9 @@ import static com.google.common.base.Preconditions.checkArgument;
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
-@Immutable
 public class AccessEvent {
   private final long key;
+  public long itemSize;
 
   public enum Operation {
     READ,
@@ -209,8 +208,7 @@ public class AccessEvent {
     }
   }
 
-  private static final class DelayAccessEvent extends AccessEvent {
-    private final long itemSize;
+  public static final class DelayAccessEvent extends AccessEvent {
     private final int operation;
     private final double underflowDelay;
 

@@ -37,6 +37,9 @@ public final class SALfuPolicy implements Policy {
     if (currentTime % sketch.period == 0)
       minHeap.makeHeap();
 
+    if (Consts.CHUNK_SIZE > 0)
+      event.itemSize = Math.min(Consts.CHUNK_SIZE, event.itemSize);
+
     switch (event.operation()) {
       case READ:
         onRead(event);

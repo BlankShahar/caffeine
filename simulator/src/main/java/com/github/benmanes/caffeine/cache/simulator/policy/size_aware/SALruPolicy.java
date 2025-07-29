@@ -30,6 +30,10 @@ public final class SALruPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     currentTime++;
+
+    if (Consts.CHUNK_SIZE > 0)
+      event.itemSize = Math.min(Consts.CHUNK_SIZE, event.itemSize);
+
     switch (event.operation()) {
       case READ:
         onRead(event);
@@ -77,7 +81,7 @@ public final class SALruPolicy implements Policy {
       if (event.operation() == READ) {
         double latency = calculateLatency(
           event.retrievalDelay(),
-          event.itemSize() ,
+          event.itemSize(),
           event.itemSize(),
           Consts.BANDWIDTH
         );
