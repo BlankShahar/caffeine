@@ -15,6 +15,8 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Queue;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
@@ -33,7 +35,7 @@ public final class NBLruPolicy implements Policy {
 
   private static BufferedWriter csvWriter;
   private static int linesSinceFlush = 0;
-  private static final int FLUSH_INTERVAL = 10000; // flush every 10k lines
+  private static final int FLUSH_INTERVAL = 1_000_000; // flush every 1M lines
   private double lastTotalDelay = 0;
   private double lastTotalLatency = 0;
   private long lastTotalOperations = 0;
@@ -137,6 +139,41 @@ public final class NBLruPolicy implements Policy {
     policyStats.addLatency(latency);
   }
 
+  private void abortEvictions(HashMap<Prefix, Long> victimToOriginalSize) {
+    for (Map.Entry<Prefix, Long> entry : victimToOriginalSize.entrySet()) {
+      Prefix victim = entry.getKey();
+      long originalSize = entry.getValue();
+
+      currentCacheSize += originalSize - victim.currentSize;
+      victim.currentSize = originalSize;
+      scoreMinHeap.upsert(victim.itemKey, victim);
+      policyStats.recordOperation(); // TODO: should it be here or only if we didn't abort?
+    }
+  }
+
+  private boolean makeRoom(Prefix prefix) {
+    HashMap<Prefix, Long> victimToOriginalSize = new HashMap<>();
+    long addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
+    while (currentCacheSize + addSize > maximumCacheSize) {
+      Prefix victim = findVictim();
+      if (
+        prefix.lfuScoreAfterInsertion() < victim.lfuScoreAfterEviction()
+          || prefix.itemKey == victim.itemKey
+      ) {
+        abortEvictions(victimToOriginalSize);
+        return false; // Abort and break
+      }
+
+      if (!victimToOriginalSize.containsKey(victim))
+        victimToOriginalSize.put(victim, victim.currentSize);
+
+      shrinkPrefix(victim); // remove chunk from the cache & update the heap
+      policyStats.recordOperation(); // TODO: should it be here or only if we didn't abort?
+    }
+
+    return true;
+  }
+
   private void waterFill(Prefix prefix) {
     long addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
     while (!prefix.isFull() && // stop if the prefix is full
@@ -146,17 +183,32 @@ public final class NBLruPolicy implements Policy {
       addSize = Math.min(prefix.fullItemSize - prefix.currentSize, Consts.CHUNK_SIZE);
     }
 
-    if (prefix.isFull() || maximumCacheSize == 0) return;
+    if (maximumCacheSize == 0) return;
 
-    Prefix victim;
-    do {
+    while (!prefix.isFull()) {
+      if (!makeRoom(prefix))
+        break; // If makeRoom returns false, we abort the process
       extendPrefix(prefix);
-      do {
-        victim = findVictim();
-        shrinkPrefix(victim);
-      } while (currentCacheSize > maximumCacheSize);
+    }
 
-    } while (!(prefix.isFull() || victim.itemKey == prefix.itemKey));
+    // Prefix prefix
+    // while(prefix.currentSize < prefix.fullItemSize) {
+
+    // boolean function (makeRoom):
+    // @return true iff evicted enough victims to make space for extending the prefix
+    // while (min(chunk,tail) doesn't fit in the cache) {
+    // victim=findVictim()
+    // if (prefix.lfuScoreAfterInsertion() < victim.lfuScoreAfterEviction() || prefix==victim)
+    // abort + break
+    // shrinkPrefix(victim); // remove chunk from the cache & update the heap
+    // addVictimToList(victim);
+    // }
+
+    // if makeRoom == false
+    //    break
+
+    // extendPrefix(prefix); // add min(chunk,tail) to the prefix & update the heap
+    // }
 
     assert currentCacheSize <= maximumCacheSize : "Current cache size exceeds the maximum cache size (current time: " + currentTime + ")";
     assert currentCacheSize >= 0 : "Current cache size cannot be negative (current time: " + currentTime + ")";
@@ -254,7 +306,6 @@ public final class NBLruPolicy implements Policy {
     lastTotalOperations = currentOperations;
   }
 
-
   @Override
   public void finished() {
     try {
@@ -316,6 +367,20 @@ public final class NBLruPolicy implements Policy {
       long removeSize = (remainder > 0) ? remainder : Consts.CHUNK_SIZE;
       currentSize -= removeSize;
       return removeSize;
+    }
+
+    private double lfuScoreAfterInsertion() {
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        Math.min(currentSize + Consts.CHUNK_SIZE, fullItemSize), Consts.BANDWIDTH);
+      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
+    }
+
+    private double lfuScoreAfterEviction() {
+      long remainder = currentSize % Consts.CHUNK_SIZE;
+      long removeSize = (remainder > 0) ? remainder : Consts.CHUNK_SIZE;
+      double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
+        Math.max(0, currentSize - removeSize), Consts.BANDWIDTH);
+      return recency() * (1 - source.calculateCDF(prefixTransmissionTime));
     }
 
     public double currentSize() {
