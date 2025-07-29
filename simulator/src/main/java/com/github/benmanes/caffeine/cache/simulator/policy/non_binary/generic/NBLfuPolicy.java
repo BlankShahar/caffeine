@@ -282,8 +282,10 @@ public final class NBLfuPolicy implements Policy {
   }
 
   private double lfuScoreAfterEviction(Prefix prefix) {
+    long remainder = prefix.currentSize % Consts.CHUNK_SIZE;
+    long removeSize = (remainder > 0) ? remainder : Consts.CHUNK_SIZE;
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-      Math.max(0, prefix.currentSize - Consts.CHUNK_SIZE), Consts.BANDWIDTH);
+      Math.max(0, prefix.currentSize - removeSize), Consts.BANDWIDTH);
     return (double) sketch.frequency(prefix.itemKey) / sketch.period
       * (1 - source.calculateCDF(prefixTransmissionTime));
   }
@@ -309,8 +311,10 @@ public final class NBLfuPolicy implements Policy {
     double deltaLatency = currentLatency - lastTotalLatency;
     long deltaOperations = currentOperations - lastTotalOperations;
 
+    long remainder = currentPrefixSize % Consts.CHUNK_SIZE;
+    long removeSize = (remainder > 0) ? remainder : Consts.CHUNK_SIZE;
     double prefixTransmissionTime = TimeCalculations.calculateTransmissionTime(
-      Math.max(0, currentPrefixSize - Consts.CHUNK_SIZE), Consts.BANDWIDTH);
+      Math.max(0, currentPrefixSize - removeSize), Consts.BANDWIDTH);
     double cdf = 1 - source.calculateCDF(prefixTransmissionTime);
 
     try {
