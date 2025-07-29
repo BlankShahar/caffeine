@@ -1,6 +1,7 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.size_aware;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
+import com.github.benmanes.caffeine.cache.simulator.admission.countmin4.PeriodicResetCountMin4;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
@@ -14,6 +15,7 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Tim
 public final class SAHyperbolicPolicy implements Policy {
   final PolicyStats policyStats;
   final SearchableMinHeap<Long, Item> minHeap;
+  private final PeriodicResetCountMin4 sketch;
   final long maximumCacheSize;
   long currentCacheSize;
   long currentTime;
@@ -22,6 +24,7 @@ public final class SAHyperbolicPolicy implements Policy {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
     this.minHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::compareItems);
+    this.sketch = new PeriodicResetCountMin4(settings.config());
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
     this.currentTime = 0;
@@ -30,6 +33,8 @@ public final class SAHyperbolicPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     currentTime++;
+    if (currentTime % sketch.period == 0)
+      minHeap.makeHeap();
     if (Consts.CHUNK_SIZE > 0)
       event.itemSize = Math.min(Consts.CHUNK_SIZE, event.itemSize);
 
@@ -45,6 +50,17 @@ public final class SAHyperbolicPolicy implements Policy {
         break;
       default:
         throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+    }
+  }
+
+  private void handleRequestsFrequency(long itemKey) {
+    sketch.increment(itemKey);
+    Item prefix = minHeap.get(itemKey);
+
+    if (prefix != null) {
+      prefix.frequency = sketch.frequency(itemKey);
+      minHeap.upsert(itemKey, prefix);
+      policyStats.recordOperation();
     }
   }
 
@@ -65,6 +81,10 @@ public final class SAHyperbolicPolicy implements Policy {
   }
 
   private void onRead(AccessEvent event) {
+    if (currentCacheSize >= maximumCacheSize)
+      sketch.ensureCapacity(2_000_000);
+    handleRequestsFrequency(event.key());
+
     long itemKey = event.key();
     long itemSize = event.itemSize();
     double retrievalDelay = event.retrievalDelay();
@@ -75,7 +95,6 @@ public final class SAHyperbolicPolicy implements Policy {
     if (item != null) {
       // Hit
       policyStats.recordHit();
-      item.frequency++;
       item.lastAccessTime = currentTime;
       minHeap.upsert(itemKey, item);
       policyStats.recordOperation();
