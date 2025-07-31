@@ -1,18 +1,22 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources;
 
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+
 import java.util.HashMap;
 import java.util.Random;
 
 public class NormalSource extends Source {
   protected Random random;
-  protected final double mean, standardDeviation; // in ms
+  public final double mean, standardDeviation; // in ms
   protected final HashMap<Double, Double> zTable;
   protected final HashMap<Double, Double> resultsCache;
+  public long chunkSize;
 
   public NormalSource(long id, double mean, double standardDeviation) {
     super(id);
     this.mean = mean;
     this.standardDeviation = standardDeviation;
+    chunkSize = (long) (Consts.BANDWIDTH * (mean + 2 * standardDeviation));
     this.random = new Random(id);
     this.zTable = new HashMap<>();
     this.resultsCache = new HashMap<>();

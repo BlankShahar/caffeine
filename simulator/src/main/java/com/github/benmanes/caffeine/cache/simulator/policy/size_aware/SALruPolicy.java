@@ -5,6 +5,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
 import com.typesafe.config.Config;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
@@ -31,9 +32,10 @@ public final class SALruPolicy implements Policy {
   public void record(AccessEvent event) {
     currentTime++;
 
-    if (Consts.CHUNK_SIZE > 0)
-      event.itemSize = Math.min(Consts.CHUNK_SIZE, event.itemSize);
-
+    if (Consts.CHUNK_SIZE > 0) {
+      NormalSource source = Consts.SOURCES.get((int) (event.key() % Consts.SOURCES.size()));
+      event.itemSize = Math.min(source.chunkSize, event.itemSize);
+    }
     switch (event.operation()) {
       case READ:
         onRead(event);
