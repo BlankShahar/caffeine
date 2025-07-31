@@ -15,10 +15,10 @@ public final class Consts {
   public static final ArrayList<NormalSource> SOURCES = new ArrayList<>();
   static {
     SOURCES.add(new NormalSource(0, 0.675, 0.01431));
-    SOURCES.add(new NormalSource(1, 0.12, 0.0608));
-    SOURCES.add(new NormalSource(2, 0.5132, 0.0608));
-    SOURCES.add(new NormalSource(3, 0.3384, 0.0608));
-    SOURCES.add(new NormalSource(4, 0.1583, 0.0608));
-    SOURCES.add(new NormalSource(5, 0.847, 0.0608));
+    SOURCES.add(new NormalSource(1, 0.12, 0.01242));
+    SOURCES.add(new NormalSource(2, 0.5132, 0.013));
+    SOURCES.add(new NormalSource(3, 0.3384, 0.013));
+    SOURCES.add(new NormalSource(4, 0.1583, 0.013));
+    SOURCES.add(new NormalSource(5, 0.0847, 0.013));
   }
 }
