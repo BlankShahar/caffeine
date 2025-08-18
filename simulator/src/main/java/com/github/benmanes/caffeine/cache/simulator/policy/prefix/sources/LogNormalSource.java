@@ -1,4 +1,4 @@
-package com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources;
+package com.github.benmanes.caffeine.cache.simulator.policy.prefix.sources;
 
 public class LogNormalSource extends NormalSource {
   public LogNormalSource(long id, double mean, double standardDeviation) {

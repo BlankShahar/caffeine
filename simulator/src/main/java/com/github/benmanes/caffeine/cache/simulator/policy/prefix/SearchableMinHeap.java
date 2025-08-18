@@ -1,4 +1,4 @@
-package com.github.benmanes.caffeine.cache.simulator.policy.non_binary;
+package com.github.benmanes.caffeine.cache.simulator.policy.prefix;
 
 import com.github.benmanes.caffeine.cache.simulator.DebugHelpers.Assert;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;

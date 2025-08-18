@@ -1,28 +1,32 @@
-package com.github.benmanes.caffeine.cache.simulator.policy.size_aware;
+package com.github.benmanes.caffeine.cache.simulator.policy.prefix.cluster_based;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager.ChunkManager;
+import com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager.ClusterBasedChunkManager;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.prefix.TimeCalculations.calculateLatency;
+import static com.github.benmanes.caffeine.cache.simulator.policy.prefix.TimeCalculations.calculateUnderflowDelay;
 
-@Policy.PolicySpec(name = "size-aware.SegmentedLRU")
-public final class SASegmentedLruPolicy implements Policy {
-  final Long2ObjectMap<Node> data;
+@Policy.PolicySpec(name = "prefix.cluster-based.SegmentedLRU")
+public final class PCSegmentedLruPolicy implements Policy {
+  final Long2ObjectMap<Prefix> data;
   final PolicyStats policyStats;
 
-  final Node headProtected;
-  final Node headProbation;
+  final Prefix headProtected;
+  final Prefix headProbation;
 
   final long maxProtectedSize;
   final long maxProbationSize;
   final long maximumSize;
+
+  final ClusterBasedChunkManager chunk_manager;
 
   /**
    * Sum of the sizes in the PROTECTED queue.
@@ -37,7 +41,7 @@ public final class SASegmentedLruPolicy implements Policy {
    */
   long currentSize;
 
-  public SASegmentedLruPolicy(Config config) {
+  public PCSegmentedLruPolicy(Config config) {
     this.policyStats = new PolicyStats(name());
     var settings = new BasicSettings(config);
 
@@ -49,14 +53,16 @@ public final class SASegmentedLruPolicy implements Policy {
     this.maxProbationSize = maximumSize - maxProtectedSize;
 
     // Initialize the protected queue's sentinel
-    this.headProtected = new Node(-1);
+    this.headProtected = new Prefix(-1);
     headProtected.prev = headProtected;
     headProtected.next = headProtected;
 
     // Initialize the probation queue's sentinel
-    this.headProbation = new Node(-1);
+    this.headProbation = new Prefix(-1);
     headProbation.prev = headProbation;
     headProbation.next = headProbation;
+
+    this.chunk_manager = new ClusterBasedChunkManager();
   }
 
   @Override
@@ -94,67 +100,52 @@ public final class SASegmentedLruPolicy implements Policy {
     }
   }
 
+  private void recordStats(long fullItemSize, long cachedSize, double retrievalDelay) {
+    double delay = calculateUnderflowDelay(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
+    policyStats.addDelay(delay);
+
+    double latency = calculateLatency(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
+    policyStats.addLatency(latency);
+  }
+
   private void onRead(AccessEvent event) {
-    Node node = data.get(event.key());
+    Prefix prefix = data.get(event.key());
+    recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
+    event.itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
+    chunk_manager.addDelay(event.key(), event.retrievalDelay());
 
-    if (node == null) {
-      long currentSize = event.itemSize();
-      onMiss(event.key(), event.retrievalDelay(), currentSize);
-
-      if (event.operation() == READ) {
-        policyStats.addDelay(event.retrievalDelay());
-        double latency = calculateLatency(
-          event.retrievalDelay(),
-          event.itemSize(),
-          0,
-          Consts.BANDWIDTH
-        );
-        policyStats.addLatency(latency);
-      }
-
-    } else {
-      onHit(node);
-
-      if (event.operation() == READ) {
-        double latency = calculateLatency(
-          event.retrievalDelay(),
-          event.itemSize(),
-          event.itemSize(),
-          Consts.BANDWIDTH
-        );
-        policyStats.addLatency(latency);
-      }
-    }
+    if (prefix == null) onMiss(event.key(), event.retrievalDelay(), event.itemSize());
+    else onHit(prefix);
   }
 
   /**
    * Handle a cache hit.
    * If the node is in probation, promote it to protected (if capacity allows).
    */
-  private void onHit(Node node) {
-    if (node.type == QueueType.PROTECTED) {
+  private void onHit(Prefix prefix) {
+    if (prefix.type == QueueType.PROTECTED) {
       // Already in protected => move to MRU
-      node.moveToTail(headProtected);
+      prefix.moveToTail(headProtected);
       policyStats.recordOperation();
     } else {
       // It's in probation => attempt promotion to protected
-      long neededSize = node.size;
+      long neededSize = prefix.size;
       if (sizeProtected + neededSize <= maxProtectedSize) {
         demoteProtectedUntilFits(neededSize);
 
         // Remove from probation tracking
-        sizeProbation -= node.size;
-        node.remove();
+        sizeProbation -= prefix.size;
+        prefix.remove();
         policyStats.recordOperation();
 
         // Switch type & add to protected
-        node.type = QueueType.PROTECTED;
-        node.appendToTail(headProtected);
+        prefix.type = QueueType.PROTECTED;
+        prefix.appendToTail(headProtected);
         policyStats.recordOperation();
-        sizeProtected += node.size;
+        sizeProtected += prefix.size;
       } else {
         // Not enough room => remain in probation, but move to MRU
-        node.moveToTail(headProbation);
+        prefix.moveToTail(headProbation);
         policyStats.recordOperation();
       }
     }
@@ -170,12 +161,12 @@ public final class SASegmentedLruPolicy implements Policy {
       return;
     }
 
-    Node node = new Node(key, itemSize);
-    node.type = QueueType.PROBATION;
-    data.put(key, node);
+    Prefix prefix = new Prefix(key, itemSize);
+    prefix.type = QueueType.PROBATION;
+    data.put(key, prefix);
 
     // Add to probation
-    node.appendToTail(headProbation);
+    prefix.appendToTail(headProbation);
     policyStats.recordOperation();
     sizeProbation += itemSize;
 
@@ -192,7 +183,7 @@ public final class SASegmentedLruPolicy implements Policy {
    */
   private void evictIfNeeded() {
     while (currentSize > maximumSize) {
-      Node victim;
+      Prefix victim;
       if (sizeProbation > 0) {
         // Evict from probation
         victim = headProbation.next;
@@ -219,7 +210,7 @@ public final class SASegmentedLruPolicy implements Policy {
   private void demoteProtectedUntilFits(long neededSize) {
     while ((sizeProtected + neededSize) > maxProtectedSize
       && headProtected.next != headProtected) {
-      Node demote = headProtected.next; // LRU in protected
+      Prefix demote = headProtected.next; // LRU in protected
       demote.remove();
       policyStats.recordOperation();
       demote.type = QueueType.PROBATION;
@@ -235,17 +226,17 @@ public final class SASegmentedLruPolicy implements Policy {
   /**
    * Evict a given node (remove from data structure + queues).
    */
-  private void evictEntry(Node node) {
-    data.remove(node.key);
-    currentSize -= node.size;
+  private void evictEntry(Prefix prefix) {
+    data.remove(prefix.key);
+    currentSize -= prefix.size;
 
-    if (node.type == QueueType.PROTECTED) {
-      sizeProtected -= node.size;
+    if (prefix.type == QueueType.PROTECTED) {
+      sizeProtected -= prefix.size;
     } else {
-      sizeProbation -= node.size;
+      sizeProbation -= prefix.size;
     }
 
-    node.remove();
+    prefix.remove();
     policyStats.recordOperation();
     policyStats.recordEviction();
   }
@@ -260,19 +251,19 @@ public final class SASegmentedLruPolicy implements Policy {
     PROBATION
   }
 
-  static final class Node {
+  static final class Prefix {
     final long key;
     final long size;
 
-    Node prev;
-    Node next;
+    Prefix prev;
+    Prefix next;
     QueueType type;
 
-    Node(long size) {
+    Prefix(long size) {
       this(Long.MIN_VALUE, size);
     }
 
-    Node(long key, long size) {
+    Prefix(long key, long size) {
       this.key = key;
       this.size = size;
     }
@@ -280,8 +271,8 @@ public final class SASegmentedLruPolicy implements Policy {
     /**
      * Insert at the tail (MRU) of the given 'head' sentinel.
      */
-    void appendToTail(Node head) {
-      Node tail = head.prev;
+    void appendToTail(Prefix head) {
+      Prefix tail = head.prev;
       tail.next = this;
       this.prev = tail;
       this.next = head;
@@ -291,7 +282,7 @@ public final class SASegmentedLruPolicy implements Policy {
     /**
      * Move this node to the tail (MRU) of the given 'head' sentinel.
      */
-    void moveToTail(Node head) {
+    void moveToTail(Prefix head) {
       remove();
       appendToTail(head);
     }

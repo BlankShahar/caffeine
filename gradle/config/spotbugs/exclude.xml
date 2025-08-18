@@ -285,7 +285,7 @@
     <Bug pattern="POTENTIAL_XML_INJECTION"/>
   </Match>
   <Match>
-    <Class name="com.github.benmanes.caffeine.cache.node.AddSubtype"/>
+    <Class name="com.github.benmanes.caffeine.cache.prefix.AddSubtype"/>
     <Method name="getJavaDoc"/>
     <Bug pattern="POTENTIAL_XML_INJECTION"/>
   </Match>

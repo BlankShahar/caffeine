@@ -5,12 +5,11 @@ import com.github.benmanes.caffeine.cache.simulator.admission.countmin4.Periodic
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.non_binary.sources.NormalSource;
+import com.github.benmanes.caffeine.cache.simulator.policy.prefix.Consts;
 import com.typesafe.config.Config;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
-import static com.github.benmanes.caffeine.cache.simulator.policy.non_binary.TimeCalculations.calculateLatency;
+import static com.github.benmanes.caffeine.cache.simulator.policy.prefix.TimeCalculations.calculateLatency;
 
 @Policy.PolicySpec(name = "size-aware.Hyperbolic")
 public final class SAHyperbolicPolicy implements Policy {
@@ -36,10 +35,6 @@ public final class SAHyperbolicPolicy implements Policy {
     currentTime++;
     if (currentTime % sketch.period == 0)
       minHeap.makeHeap();
-    if (Consts.CHUNK_SIZE > 0) {
-      NormalSource source = Consts.SOURCES.get((int) (event.key() % Consts.SOURCES.size()));
-      event.itemSize = Math.min(source.chunkSize, event.itemSize);
-    }
 
     switch (event.operation()) {
       case READ:

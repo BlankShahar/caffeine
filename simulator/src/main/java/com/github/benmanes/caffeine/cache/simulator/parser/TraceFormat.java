@@ -40,7 +40,7 @@ import com.github.benmanes.caffeine.cache.simulator.parser.libcachesim.csv.LibCa
 import com.github.benmanes.caffeine.cache.simulator.parser.libcachesim.twitter.LibCacheSimTwitterTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.lirs.LirsTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.lrb.LrbTraceReader;
-import com.github.benmanes.caffeine.cache.simulator.parser.non_binary.NonBinaryTraceReader;
+import com.github.benmanes.caffeine.cache.simulator.parser.prefix.PrefixTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.scarab.ScarabTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.snia.cambridge.CambridgeTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.snia.enterprise.EnterpriseTraceReader;
@@ -98,7 +98,7 @@ public enum TraceFormat {
   UMASS_STORAGE(StorageTraceReader::new),
   UMASS_YOUTUBE(YoutubeTraceReader::new),
   WIKIPEDIA(WikipediaTraceReader::new),
-  NON_BINARY(NonBinaryTraceReader::new);
+  PREFIX(PrefixTraceReader::new);
 
   private final Function<String, TraceReader> factory;
 

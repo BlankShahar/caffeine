@@ -1,30 +1,32 @@
-package com.github.benmanes.caffeine.cache.simulator.policy.size_aware;
+package com.github.benmanes.caffeine.cache.simulator.policy.prefix.item_based;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager.ChunkManager;
+import com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager.ItemBasedChunkManager;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.prefix.TimeCalculations.calculateLatency;
+import static com.github.benmanes.caffeine.cache.simulator.policy.prefix.TimeCalculations.calculateUnderflowDelay;
 import static com.google.common.base.Preconditions.checkState;
 
-@Policy.PolicySpec(name = "size-aware.Arc")
-public final class SAArcPolicy implements Policy {
+@Policy.PolicySpec(name = "prefix.item-based.Arc")
+public final class PIArcPolicy implements Policy {
 
   private enum Q {T1, B1, T2, B2}
 
-  private final Node headT1 = new Node(0);
-  private final Node headT2 = new Node(0);
-  private final Node headB1 = new Node(0);
-  private final Node headB2 = new Node(0);
+  private final Prefix headT1 = new Prefix(0);
+  private final Prefix headT2 = new Prefix(0);
+  private final Prefix headB1 = new Prefix(0);
+  private final Prefix headB2 = new Prefix(0);
 
-  private final Long2ObjectMap<Node> data = new Long2ObjectOpenHashMap<>();
+  private final Long2ObjectMap<Prefix> data = new Long2ObjectOpenHashMap<>();
   private final PolicyStats policyStats = new PolicyStats(name());
   private final long maximumCacheSize;
   private long p;
@@ -32,9 +34,12 @@ public final class SAArcPolicy implements Policy {
   private long sizeT1, sizeT2, sizeB1, sizeB2;
   private int currentTime = 0;
 
-  public SAArcPolicy(Config cfg) {
+  private final ItemBasedChunkManager chunk_manager;
+
+  public PIArcPolicy(Config cfg) {
     maximumCacheSize = new BasicSettings(cfg).maximumSize();
     p = 0;
+    chunk_manager = new ItemBasedChunkManager();
   }
 
   @Override
@@ -76,25 +81,40 @@ public final class SAArcPolicy implements Policy {
     }
   }
 
+  private void recordStats(long fullItemSize, long cachedSize, double retrievalDelay) {
+    double delay = calculateUnderflowDelay(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
+    policyStats.addDelay(delay);
+
+    double latency = calculateLatency(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
+    policyStats.addLatency(latency);
+  }
+
   private void onRead(AccessEvent event) {
     currentTime++;
 
-    Node n = data.get(event.key());
-    if (n == null) {
+    Prefix prefix = data.get(event.key());
+    recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
+
+    event.itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
+    chunk_manager.addDelay(event.key(), event.retrievalDelay());
+
+    if (prefix == null) {
       onMiss(event);
       return;
     }
 
-    if (n.q == Q.T1 || n.q == Q.T2) {
-      onHit(n, event);
-    } else if (n.q == Q.B1) {
-      onHitB1(n, event);
-    } else if (n.q == Q.B2) {
-      onHitB2(n, event);
+    onDelete(event); // The chunk size may have changed, so we remove it first
+    if (prefix.q == Q.T1 || prefix.q == Q.T2) {
+      onHit(prefix, event);
+    } else if (prefix.q == Q.B1) {
+      onHitB1(prefix, event);
+    } else if (prefix.q == Q.B2) {
+      onHitB2(prefix, event);
     }
+
   }
 
-  private void onHit(Node n, AccessEvent e) {
+  private void onHit(Prefix n, AccessEvent e) {
     if (n.q == Q.T1) {
       sizeT1 -= n.size;
       sizeT2 += n.size;
@@ -105,23 +125,10 @@ public final class SAArcPolicy implements Policy {
     n.appendToTail(headT2);
     policyStats.recordOperation();
     policyStats.recordHit();
-    double latency = calculateLatency(
-      e.retrievalDelay(),
-      e.itemSize(),
-      e.itemSize(),
-      Consts.BANDWIDTH
-    );
-    policyStats.addLatency(latency);
   }
 
-  private void onHitB1(Node n, AccessEvent e) {
+  private void onHitB1(Prefix n, AccessEvent e) {
     policyStats.recordMiss();
-
-    if (e.operation() == READ) {
-      policyStats.addDelay(e.retrievalDelay());
-      double latency = calculateLatency(e.retrievalDelay(), e.itemSize(), 0, Consts.BANDWIDTH);
-      policyStats.addLatency(latency);
-    }
 
     p = Math.min(maximumCacheSize, p + n.size);
     if (n.size <= (maximumCacheSize - sizeT1)) {
@@ -132,13 +139,8 @@ public final class SAArcPolicy implements Policy {
     }
   }
 
-  private void onHitB2(Node n, AccessEvent e) {
+  private void onHitB2(Prefix n, AccessEvent e) {
     policyStats.recordMiss();
-    if (e.operation() == READ) {
-      policyStats.addDelay(e.retrievalDelay());
-      double latency = calculateLatency(e.retrievalDelay(), e.itemSize(), 0, Consts.BANDWIDTH);
-      policyStats.addLatency(latency);
-    }
 
     p = Math.max(0, p - n.size);
     if (n.size <= (maximumCacheSize - sizeT1)) {
@@ -149,7 +151,7 @@ public final class SAArcPolicy implements Policy {
     }
   }
 
-  private void moveFromGhostToT2(Node n) {
+  private void moveFromGhostToT2(Prefix n) {
     if (n.q == Q.B1) sizeB1 -= n.size;
     else sizeB2 -= n.size;
     n.remove();
@@ -163,12 +165,6 @@ public final class SAArcPolicy implements Policy {
   private void onMiss(AccessEvent event) {
     long size = event.itemSize();
     policyStats.recordMiss();
-
-    if (event.operation() == READ) {
-      policyStats.addDelay(event.retrievalDelay());
-      double latency = calculateLatency(event.retrievalDelay(), event.itemSize(), 0, Consts.BANDWIDTH);
-      policyStats.addLatency(latency);
-    }
 
     if (size > maximumCacheSize) {
       return;
@@ -191,7 +187,7 @@ public final class SAArcPolicy implements Policy {
 
     if (size <= (maximumCacheSize - sizeT2)) {
       evictToMakeSpace(Q.T1, size);
-      Node n = new Node(event.key(), size);
+      Prefix n = new Prefix(event.key(), size);
       n.q = Q.T1;
       n.appendToTail(headT1);
       policyStats.recordOperation();
@@ -205,7 +201,7 @@ public final class SAArcPolicy implements Policy {
     long usage = (target == Q.T1) ? sizeT1 : sizeT2;
 
     while (usage + needed > available) {
-      Node victim = (target == Q.T1) ? headT1.next : headT2.next;
+      Prefix victim = (target == Q.T1) ? headT1.next : headT2.next;
       if (victim == victim.next || victim.size == 0) break;
       evictResident(victim);
       usage = (target == Q.T1) ? sizeT1 : sizeT2;
@@ -213,7 +209,7 @@ public final class SAArcPolicy implements Policy {
     }
   }
 
-  private void evictResident(Node v) {
+  private void evictResident(Prefix v) {
     v.remove();
     policyStats.recordOperation();
     if (v.q == Q.T1) {
@@ -232,7 +228,7 @@ public final class SAArcPolicy implements Policy {
     policyStats.recordEviction();
   }
 
-  private void evictGhost(Node g) {
+  private void evictGhost(Prefix g) {
     g.remove();
     data.remove(g.key);
     if (g.q == Q.B1) sizeB1 -= g.size;
@@ -255,25 +251,25 @@ public final class SAArcPolicy implements Policy {
     return Policy.super.name();
   }
 
-  static final class Node {
+  static final class Prefix {
     final long key;
     final long size;
 
-    Node prev, next;
+    Prefix prev, next;
     Q q;
 
-    Node(long size) {
+    Prefix(long size) {
       this(Long.MIN_VALUE, size);
     }
 
-    Node(long key, long size) {
+    Prefix(long key, long size) {
       this.key = key;
       this.size = size;
       this.prev = this.next = this;
     }
 
-    void appendToTail(Node head) {
-      Node tail = head.prev;
+    void appendToTail(Prefix head) {
+      Prefix tail = head.prev;
       tail.next = head.prev = this;
       this.prev = tail;
       this.next = head;

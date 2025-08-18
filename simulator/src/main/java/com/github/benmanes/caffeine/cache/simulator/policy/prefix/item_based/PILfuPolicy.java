@@ -1,4 +1,4 @@
-package com.github.benmanes.caffeine.cache.simulator.policy.size_aware;
+package com.github.benmanes.caffeine.cache.simulator.policy.prefix.item_based;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.countmin4.PeriodicResetCountMin4;
@@ -6,22 +6,26 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager.ChunkManager;
+import com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager.ItemBasedChunkManager;
+import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.SearchableMinHeap;
 import com.typesafe.config.Config;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.prefix.TimeCalculations.calculateLatency;
+import static com.github.benmanes.caffeine.cache.simulator.policy.prefix.TimeCalculations.calculateUnderflowDelay;
 
 
-@Policy.PolicySpec(name = "size-aware.LFU")
-public final class SALfuPolicy implements Policy {
+@Policy.PolicySpec(name = "prefix.item-based.LFU")
+public final class PILfuPolicy implements Policy {
   final PolicyStats policyStats;
-  final SearchableMinHeap<Long, Item> minHeap;
+  final SearchableMinHeap<Long, Prefix> minHeap;
   private final PeriodicResetCountMin4 sketch;
   final long maximumCacheSize;
   long currentCacheSize;
   int currentTime;
+  final ItemBasedChunkManager chunk_manager;
 
-  public SALfuPolicy(Config config) {
+  public PILfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.policyStats = new PolicyStats(name());
     this.minHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::compareItems);
@@ -29,13 +33,13 @@ public final class SALfuPolicy implements Policy {
     this.maximumCacheSize = settings.maximumSize();
     this.currentCacheSize = 0;
     this.currentTime = 0;
+    this.chunk_manager = new ItemBasedChunkManager();
   }
 
   @Override
   public void record(AccessEvent event) {
     currentTime++;
-    if (currentTime % sketch.period == 0)
-      minHeap.makeHeap();
+    if (currentTime % sketch.period == 0) minHeap.makeHeap();
 
     switch (event.operation()) {
       case READ:
@@ -70,7 +74,7 @@ public final class SALfuPolicy implements Policy {
 
   private void handleRequestsFrequency(long itemKey) {
     sketch.increment(itemKey);
-    Item prefix = minHeap.get(itemKey);
+    Prefix prefix = minHeap.get(itemKey);
 
     if (prefix != null) {
       prefix.frequency = sketch.frequency(itemKey);
@@ -79,46 +83,36 @@ public final class SALfuPolicy implements Policy {
     }
   }
 
+  private void recordStats(long fullItemSize, long cachedSize, double retrievalDelay) {
+    double delay = calculateUnderflowDelay(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
+    policyStats.addDelay(delay);
+
+    double latency = calculateLatency(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
+    policyStats.addLatency(latency);
+  }
+
   private void onRead(AccessEvent event) {
-    if (currentCacheSize >= maximumCacheSize)
-      sketch.ensureCapacity(2_000_000);
+    if (currentCacheSize >= maximumCacheSize) sketch.ensureCapacity(2_000_000);
     handleRequestsFrequency(event.key());
 
     long itemKey = event.key();
-    long itemSize = event.itemSize();
-    double retrievalDelay = event.retrievalDelay();
 
-    Item item = minHeap.get(itemKey);
-    if (item != null) {
+    Prefix prefix = minHeap.get(itemKey);
+    recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
+
+    event.itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
+    long itemSize = event.itemSize();
+    chunk_manager.addDelay(event.key(), event.retrievalDelay());
+
+    if (prefix != null) {
       // Hit
       policyStats.recordHit();
-      minHeap.upsert(itemKey, item);
+      minHeap.upsert(itemKey, prefix);
       policyStats.recordOperation();
-
-      if (event.operation() == READ) {
-        double latency = calculateLatency(
-          event.retrievalDelay(),
-          event.itemSize(),
-          event.itemSize(),
-          Consts.BANDWIDTH
-        );
-        policyStats.addLatency(latency);
-      }
 
     } else {
       // Miss
       policyStats.recordMiss();
-
-      if (event.operation() == READ) {
-        policyStats.addDelay(retrievalDelay);
-        double latency = calculateLatency(
-          event.retrievalDelay(),
-          event.itemSize(),
-          0,
-          Consts.BANDWIDTH
-        );
-        policyStats.addLatency(latency);
-      }
 
       // There's no enough space in the cache to insert the item
       if (itemSize > maximumCacheSize) {
@@ -127,14 +121,14 @@ public final class SALfuPolicy implements Policy {
 
       // Evict items until there's enough space
       while (currentCacheSize + itemSize > maximumCacheSize && !minHeap.isEmpty()) {
-        Item victim = minHeap.extractMin().value();
+        Prefix victim = minHeap.extractMin().value();
         currentCacheSize -= victim.size;
         policyStats.recordEviction();
       }
 
       // Insert new item
-      Item newItem = new Item(itemKey, itemSize);
-      minHeap.upsert(itemKey, newItem);
+      Prefix newPrefix = new Prefix(itemKey, itemSize);
+      minHeap.upsert(itemKey, newPrefix);
       policyStats.recordOperation();
       currentCacheSize += itemSize;
       policyStats.recordAdmission();
@@ -160,12 +154,12 @@ public final class SALfuPolicy implements Policy {
     return Policy.super.name();
   }
 
-  static public class Item {
+  static public class Prefix {
     public final long key;
     public final long size;
     public long frequency;
 
-    public Item(long key, long size) {
+    public Prefix(long key, long size) {
       this.key = key;
       this.size = size;
       this.frequency = 1;

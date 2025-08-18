@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.github.benmanes.caffeine.cache.simulator.parser.non_binary;
+package com.github.benmanes.caffeine.cache.simulator.parser.prefix;
 
 import com.github.benmanes.caffeine.cache.simulator.parser.TextTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
@@ -24,9 +24,9 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 
-public final class NonBinaryTraceReader extends TextTraceReader {
+public final class PrefixTraceReader extends TextTraceReader {
 
-  public NonBinaryTraceReader(String filePath) {
+  public PrefixTraceReader(String filePath) {
     super(filePath);
   }
 

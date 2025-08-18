@@ -1,33 +1,38 @@
-package com.github.benmanes.caffeine.cache.simulator.policy.size_aware;
+package com.github.benmanes.caffeine.cache.simulator.policy.prefix.item_based;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.Consts;
+import com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager.ChunkManager;
+import com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager.ItemBasedChunkManager;
+import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.SearchableMinHeap;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent.Operation.READ;
 import static com.github.benmanes.caffeine.cache.simulator.policy.prefix.TimeCalculations.calculateLatency;
+import static com.github.benmanes.caffeine.cache.simulator.policy.prefix.TimeCalculations.calculateUnderflowDelay;
 
-@Policy.PolicySpec(name = "size-aware.LRFU")
-public final class SALrfuPolicy implements Policy {
+@Policy.PolicySpec(name = "prefix.item-based.LRFU")
+public final class PILrfuPolicy implements Policy {
   private static final double LAMBDA = 2.0; // Decay rate in time units
 
   private final PolicyStats policyStats;
-  private final SearchableMinHeap<Long, Node> heap;
+  private final SearchableMinHeap<Long, Prefix> heap;
   private final long maximumCacheSize;
   private long currentCacheSize;
   private long currentTime;
+  final ItemBasedChunkManager chunk_manager;
 
-  public SALrfuPolicy(Config config) {
+  public PILrfuPolicy(Config config) {
     var settings = new BasicSettings(config);
     this.maximumCacheSize = settings.maximumSize();
     this.policyStats = new PolicyStats(name());
     this.heap = new SearchableMinHeap<>((int) maximumCacheSize, this::compareNodes);
     this.currentCacheSize = 0;
     this.currentTime = 0;
+    this.chunk_manager = new ItemBasedChunkManager();
   }
 
   @Override
@@ -66,73 +71,61 @@ public final class SALrfuPolicy implements Policy {
     }
   }
 
+  private void recordStats(long fullItemSize, long cachedSize, double retrievalDelay) {
+    double delay = calculateUnderflowDelay(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
+    policyStats.addDelay(delay);
+
+    double latency = calculateLatency(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
+    policyStats.addLatency(latency);
+  }
+
   private void onRead(AccessEvent event) {
     policyStats.recordOperation();
     currentTime++;
 
-    Node node = heap.get(event.key());
-    if (node == null) {
-      long currentSize = event.itemSize();
-      node = new Node(event.key(), currentSize, currentTime);
-    }
-    if (!heap.contains(node.key)) {
-      if (event.operation() == READ) {
-        policyStats.addDelay(event.retrievalDelay());
-        double latency = calculateLatency(
-          event.retrievalDelay(),
-          event.itemSize(),
-          0,
-          Consts.BANDWIDTH
-        );
-        policyStats.addLatency(latency);
-      }
-    } else {
-      if (event.operation() == READ) {
-        double latency = calculateLatency(
-          event.retrievalDelay(),
-          event.itemSize(),
-          event.itemSize(),
-          Consts.BANDWIDTH
-        );
-        policyStats.addLatency(latency);
-      }
-    }
+    Prefix prefix = heap.get(event.key());
+    recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
+    event.itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
+    chunk_manager.addDelay(event.key(), event.retrievalDelay());
 
-    updateScore(node);
+    if (prefix == null) {
+      prefix = new Prefix(event.key(), event.itemSize(), currentTime);
+    }
+    updateScore(prefix);
 
-    if (node.size > maximumCacheSize) {
+    if (prefix.size > maximumCacheSize) {
       policyStats.recordRejection();
       return;
     }
 
-    if (node.isEmpty()) {
-      while (currentCacheSize + node.size > maximumCacheSize) {
+    if (prefix.isEmpty()) {
+      while (currentCacheSize + prefix.size > maximumCacheSize) {
         evict();
       }
-      currentCacheSize += node.size;
+      currentCacheSize += prefix.size;
       policyStats.recordAdmission();
     }
 
-    if (node.isEmpty() && heap.contains(node.key)) heap.remove(node.key);
-    else heap.upsert(node.key, node);
+    if (prefix.isEmpty() && heap.contains(prefix.key)) heap.remove(prefix.key);
+    else heap.upsert(prefix.key, prefix);
     policyStats.recordOperation();
   }
 
-  private void updateScore(Node node) {
-    double decay = Math.pow(0.5, (double) (currentTime - node.lastAccessTime) / LAMBDA);
-    node.score = node.score * decay + 1;
-    node.lastAccessTime = currentTime;
+  private void updateScore(Prefix prefix) {
+    double decay = Math.pow(0.5, (double) (currentTime - prefix.lastAccessTime) / LAMBDA);
+    prefix.score = prefix.score * decay + 1;
+    prefix.lastAccessTime = currentTime;
   }
 
   private void evict() {
-    Node victim = heap.extractMin().value();
+    Prefix victim = heap.extractMin().value();
     currentCacheSize -= victim.size;
     policyStats.recordEviction();
   }
 
   private int compareNodes(long k1, long k2) {
-    Node p1 = heap.get(k1);
-    Node p2 = heap.get(k2);
+    Prefix p1 = heap.get(k1);
+    Prefix p2 = heap.get(k2);
     if (p1 == null || p2 == null) {
       throw new IllegalStateException("Node not found in heap: " + k1 + " or " + k2);
     }
@@ -150,13 +143,13 @@ public final class SALrfuPolicy implements Policy {
     Policy.super.finished();
   }
 
-  static final class Node {
+  static final class Prefix {
     final long key;
     final long size;
     long lastAccessTime;
     double score;
 
-    Node(long key, long size, long now) {
+    Prefix(long key, long size, long now) {
       this.key = key;
       this.size = size;
       this.lastAccessTime = now;
