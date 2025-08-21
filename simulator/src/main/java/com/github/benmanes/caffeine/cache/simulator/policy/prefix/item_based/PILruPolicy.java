@@ -14,6 +14,10 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.prefix.TimeCal
 
 @Policy.PolicySpec(name = "prefix.item-based.LRU")
 public final class PILruPolicy implements Policy {
+    // --- Hysteresis ---
+    private static final double GROW_RATIO = 0.05;   // grow if desired >= 1.05 * current
+    private static final double SHRINK_RATIO = 0.05; // shrink if desired <= 0.95 * current
+
     final PolicyStats policyStats;
     final long maximumCacheSize;
 
@@ -56,7 +60,8 @@ public final class PILruPolicy implements Policy {
                 onRead(event);
                 break;
             case WRITE:
-                onWrite(event);
+                onDelete(event);
+                onRead(event);
                 break;
             case DELETE:
                 onDelete(event);
@@ -64,11 +69,6 @@ public final class PILruPolicy implements Policy {
             default:
                 throw new IllegalArgumentException("Unsupported operation: " + event.operation());
         }
-    }
-
-    private void onWrite(AccessEvent event) {
-        onDelete(event);
-        onRead(event);
     }
 
     private void onDelete(AccessEvent event) {
@@ -92,48 +92,127 @@ public final class PILruPolicy implements Policy {
     private void onRead(AccessEvent event) {
         long key = event.key();
         Prefix prefix = data.get(key);
-        recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
 
-        long size = Math.min(event.itemSize(), chunk_manager.getChunkSize(key, event.itemSize()));
-        chunk_manager.addDelay(event.key(), event.retrievalDelay());
+        // record stats with the *current* cached size
+        if (event.operation() == AccessEvent.Operation.READ)
+            recordStats(event.itemSize(), (prefix != null ? prefix.size : 0), event.retrievalDelay());
+
+        // compute desired before adding this sample (so this sample affects the next call)
+        long desired = Math.min(event.itemSize(), chunk_manager.getChunkSize(key, event.itemSize()));
+        chunk_manager.addDelay(key, event.retrievalDelay());
 
         if (prefix != null) {
-            // Hit: move to MRU
+            // Hit: recency update
             policyStats.recordHit();
             prefix.lastAccessTime = currentTime;
             moveToHead(prefix);
             policyStats.recordOperation();
+
+            // Resize in place (may fully evict if desired == 0)
+            maybeResize(prefix, desired);
             return;
         }
 
-        // Miss
+        // Miss: if desired == 0 → do not cache this item at all
+        if (desired == 0) {
+            policyStats.recordMiss();
+            return;
+        }
+
         policyStats.recordMiss();
 
         // Too big to admit
-        if (size > maximumCacheSize) {
+        if (desired > maximumCacheSize) {
             return;
         }
 
-        // Evict from the LRU end until it fits
-        while (currentCacheSize + size > maximumCacheSize && !isEmpty()) {
+        // Evict until it fits
+        while (currentCacheSize + desired > maximumCacheSize && !isEmpty()) {
             Prefix victim = removeLRU();
             data.remove(victim.key);
             currentCacheSize -= victim.size;
             policyStats.recordEviction();
         }
 
-        // Admit
-        Prefix newPrefix = new Prefix(key, size);
+        // Admit with desired size
+        Prefix newPrefix = new Prefix(key, desired);
         newPrefix.lastAccessTime = currentTime;
         addToHead(newPrefix);
         data.put(key, newPrefix);
-        currentCacheSize += size;
+        currentCacheSize += desired;
         policyStats.recordOperation();
         policyStats.recordAdmission();
     }
 
-    // ==== Doubly-linked list helpers (head = MRU, tail = LRU) ====
+    // === Resizing logic ===
+    private void maybeResize(Prefix prefix, long desired) {
+        long cur = prefix.size;
 
+        // If desired == 0 ⇒ fully evict this prefix
+        if (desired == 0) {
+            detach(prefix);
+            data.remove(prefix.key);
+            currentCacheSize -= cur;
+            policyStats.recordOperation();
+            policyStats.recordEviction(); // full eviction
+            return;
+        }
+
+        if (desired > maximumCacheSize) {
+            desired = maximumCacheSize; // cap, but still attempt to grow if possible
+        }
+
+        // Grow if significantly larger (≥ +5%)
+        if (desired >= (long) Math.ceil(cur * (1.0 + GROW_RATIO))) {
+            long delta = desired - cur;
+
+            // Make room (never evict this key)
+            while (currentCacheSize + delta > maximumCacheSize) {
+                Prefix victim = removeLRUExcept(prefix.key);
+                if (victim == null) break; // only this item left; cannot grow further
+                data.remove(victim.key);
+                currentCacheSize -= victim.size;
+                policyStats.recordEviction();
+            }
+            if (currentCacheSize + delta <= maximumCacheSize) {
+                prefix.size = desired;
+                currentCacheSize += delta;
+                policyStats.recordOperation();
+                policyStats.recordAdmission(); // count bytes added
+            }
+            return;
+        }
+
+        // Shrink if significantly smaller (≤ −5%)
+        if (desired <= (long) Math.floor(cur * (1.0 - SHRINK_RATIO))) {
+            long newSize = desired; // desired > 0 here
+            long delta = cur - newSize;
+            if (delta > 0) {
+                prefix.size = newSize;
+                currentCacheSize -= delta;
+                policyStats.recordOperation();
+                policyStats.recordEviction(); // count bytes removed
+            }
+        }
+    }
+
+    /**
+     * Remove and return the LRU node that is NOT 'exceptKey'.
+     */
+    private Prefix removeLRUExcept(long exceptKey) {
+        Prefix cur = tail.prev;
+        while (cur != null && cur != head) {
+            if (cur.key != exceptKey) {
+                Prefix victim = cur;
+                detach(victim);
+                return victim;
+            }
+            cur = cur.prev;
+        }
+        return null;
+    }
+
+    // ==== Doubly-linked list helpers (head = MRU, tail = LRU) ====
     private boolean isEmpty() {
         return head.next == tail;
     }
@@ -162,9 +241,7 @@ public final class PILruPolicy implements Policy {
      */
     private Prefix removeLRU() {
         Prefix lru = tail.prev;
-        if (lru == head) {
-            return null; // should not happen; caller checks empty
-        }
+        if (lru == head) return null;
         detach(lru);
         return lru;
     }
@@ -184,11 +261,10 @@ public final class PILruPolicy implements Policy {
         return Policy.super.name();
     }
 
-    // ==== Node (formerly Item) ====
-
+    // ==== Node ====
     static final class Prefix {
         final long key;
-        final long size;
+        long size;                // mutable for in-place resizing
         long lastAccessTime;
         Prefix prev;
         Prefix next;

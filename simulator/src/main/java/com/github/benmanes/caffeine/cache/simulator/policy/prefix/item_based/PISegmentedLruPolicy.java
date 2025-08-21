@@ -5,7 +5,6 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager.ChunkManager;
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager.ItemBasedChunkManager;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -110,7 +109,8 @@ public final class PISegmentedLruPolicy implements Policy {
 
   private void onRead(AccessEvent event) {
     Prefix prefix = data.get(event.key());
-    recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
+    if (event.operation() == AccessEvent.Operation.READ)
+      recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
     event.itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
     chunk_manager.addDelay(event.key(), event.retrievalDelay());
 

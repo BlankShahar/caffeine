@@ -92,7 +92,8 @@ public final class PCArcPolicy implements Policy {
         currentTime++;
 
         Prefix prefix = data.get(event.key());
-        recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
+        if (event.operation() == AccessEvent.Operation.READ)
+            recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
 
         event.itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
         chunk_manager.addDelay(event.key(), event.retrievalDelay());

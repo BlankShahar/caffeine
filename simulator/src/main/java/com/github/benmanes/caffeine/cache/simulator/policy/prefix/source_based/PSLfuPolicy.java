@@ -98,7 +98,8 @@ public final class PSLfuPolicy implements Policy {
     long itemKey = event.key();
 
     Prefix prefix = minHeap.get(itemKey);
-    recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
+    if (event.operation() == AccessEvent.Operation.READ)
+      recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
 
     event.itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
     long itemSize = event.itemSize();

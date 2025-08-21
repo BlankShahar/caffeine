@@ -6,7 +6,6 @@ import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.Consts;
-import com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager.ChunkManager;
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager.ItemBasedChunkManager;
 import com.github.benmanes.caffeine.cache.simulator.policy.size_aware.SearchableMinHeap;
 import com.typesafe.config.Config;
@@ -17,152 +16,153 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.prefix.TimeCal
 
 @Policy.PolicySpec(name = "prefix.item-based.LFU")
 public final class PILfuPolicy implements Policy {
-  final PolicyStats policyStats;
-  final SearchableMinHeap<Long, Prefix> minHeap;
-  private final PeriodicResetCountMin4 sketch;
-  final long maximumCacheSize;
-  long currentCacheSize;
-  int currentTime;
-  final ItemBasedChunkManager chunk_manager;
+    final PolicyStats policyStats;
+    final SearchableMinHeap<Long, Prefix> minHeap;
+    private final PeriodicResetCountMin4 sketch;
+    final long maximumCacheSize;
+    long currentCacheSize;
+    int currentTime;
+    final ItemBasedChunkManager chunk_manager;
 
-  public PILfuPolicy(Config config) {
-    var settings = new BasicSettings(config);
-    this.policyStats = new PolicyStats(name());
-    this.minHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::compareItems);
-    this.sketch = new PeriodicResetCountMin4(settings.config());
-    this.maximumCacheSize = settings.maximumSize();
-    this.currentCacheSize = 0;
-    this.currentTime = 0;
-    this.chunk_manager = new ItemBasedChunkManager();
-  }
+    public PILfuPolicy(Config config) {
+        var settings = new BasicSettings(config);
+        this.policyStats = new PolicyStats(name());
+        this.minHeap = new SearchableMinHeap<>((int) settings.maximumSize(), this::compareItems);
+        this.sketch = new PeriodicResetCountMin4(settings.config());
+        this.maximumCacheSize = settings.maximumSize();
+        this.currentCacheSize = 0;
+        this.currentTime = 0;
+        this.chunk_manager = new ItemBasedChunkManager();
+    }
 
-  @Override
-  public void record(AccessEvent event) {
-    currentTime++;
-    if (currentTime % sketch.period == 0) minHeap.makeHeap();
+    @Override
+    public void record(AccessEvent event) {
+        currentTime++;
+        if (currentTime % sketch.period == 0) minHeap.makeHeap();
 
-    switch (event.operation()) {
-      case READ:
-        onRead(event);
-        break;
-      case WRITE:
-        onWrite(event);
-        break;
-      case DELETE:
+        switch (event.operation()) {
+            case READ:
+                onRead(event);
+                break;
+            case WRITE:
+                onWrite(event);
+                break;
+            case DELETE:
+                onDelete(event);
+                break;
+            default:
+                throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+        }
+    }
+
+    private void onWrite(AccessEvent event) {
         onDelete(event);
-        break;
-      default:
-        throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+        onRead(event);
     }
-  }
 
-  private void onWrite(AccessEvent event) {
-    onDelete(event);
-    onRead(event);
-  }
-
-  private void onDelete(AccessEvent event) {
-    var existingPrefix = minHeap.get(event.key());
-    if (existingPrefix != null) {
-      // prefix exists, remove it
-      minHeap.remove(existingPrefix.key);
-      policyStats.recordOperation();
-      currentCacheSize -= existingPrefix.size;
-      policyStats.recordEviction();
+    private void onDelete(AccessEvent event) {
+        var existingPrefix = minHeap.get(event.key());
+        if (existingPrefix != null) {
+            // prefix exists, remove it
+            minHeap.remove(existingPrefix.key);
+            policyStats.recordOperation();
+            currentCacheSize -= existingPrefix.size;
+            policyStats.recordEviction();
+        }
     }
-  }
 
-  private void handleRequestsFrequency(long itemKey) {
-    sketch.increment(itemKey);
-    Prefix prefix = minHeap.get(itemKey);
+    private void handleRequestsFrequency(long itemKey) {
+        sketch.increment(itemKey);
+        Prefix prefix = minHeap.get(itemKey);
 
-    if (prefix != null) {
-      prefix.frequency = sketch.frequency(itemKey);
-      minHeap.upsert(itemKey, prefix);
-      policyStats.recordOperation();
+        if (prefix != null) {
+            prefix.frequency = sketch.frequency(itemKey);
+            minHeap.upsert(itemKey, prefix);
+            policyStats.recordOperation();
+        }
     }
-  }
 
-  private void recordStats(long fullItemSize, long cachedSize, double retrievalDelay) {
-    double delay = calculateUnderflowDelay(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
-    policyStats.addDelay(delay);
+    private void recordStats(long fullItemSize, long cachedSize, double retrievalDelay) {
+        double delay = calculateUnderflowDelay(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
+        policyStats.addDelay(delay);
 
-    double latency = calculateLatency(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
-    policyStats.addLatency(latency);
-  }
-
-  private void onRead(AccessEvent event) {
-    if (currentCacheSize >= maximumCacheSize) sketch.ensureCapacity(2_000_000);
-    handleRequestsFrequency(event.key());
-
-    long itemKey = event.key();
-
-    Prefix prefix = minHeap.get(itemKey);
-    recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
-
-    event.itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
-    long itemSize = event.itemSize();
-    chunk_manager.addDelay(event.key(), event.retrievalDelay());
-
-    if (prefix != null) {
-      // Hit
-      policyStats.recordHit();
-      minHeap.upsert(itemKey, prefix);
-      policyStats.recordOperation();
-
-    } else {
-      // Miss
-      policyStats.recordMiss();
-
-      // There's no enough space in the cache to insert the item
-      if (itemSize > maximumCacheSize) {
-        return;
-      }
-
-      // Evict items until there's enough space
-      while (currentCacheSize + itemSize > maximumCacheSize && !minHeap.isEmpty()) {
-        Prefix victim = minHeap.extractMin().value();
-        currentCacheSize -= victim.size;
-        policyStats.recordEviction();
-      }
-
-      // Insert new item
-      Prefix newPrefix = new Prefix(itemKey, itemSize);
-      minHeap.upsert(itemKey, newPrefix);
-      policyStats.recordOperation();
-      currentCacheSize += itemSize;
-      policyStats.recordAdmission();
+        double latency = calculateLatency(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
+        policyStats.addLatency(latency);
     }
-  }
 
-  public int compareItems(long itemKey1, long itemKey2) {
-    return Long.compare(sketch.frequency(itemKey1), sketch.frequency(itemKey2));
-  }
+    private void onRead(AccessEvent event) {
+        if (currentCacheSize >= maximumCacheSize) sketch.ensureCapacity(2_000_000);
+        handleRequestsFrequency(event.key());
 
-  @Override
-  public void finished() {
-    Policy.super.finished();
-  }
+        long itemKey = event.key();
 
-  @Override
-  public PolicyStats stats() {
-    return policyStats;
-  }
+        Prefix prefix = minHeap.get(itemKey);
+        if (event.operation() == AccessEvent.Operation.READ)
+            recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
 
-  @Override
-  public String name() {
-    return Policy.super.name();
-  }
+        event.itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
+        long itemSize = event.itemSize();
+        chunk_manager.addDelay(event.key(), event.retrievalDelay());
 
-  static public class Prefix {
-    public final long key;
-    public final long size;
-    public long frequency;
+        if (prefix != null) {
+            // Hit
+            policyStats.recordHit();
+            minHeap.upsert(itemKey, prefix);
+            policyStats.recordOperation();
 
-    public Prefix(long key, long size) {
-      this.key = key;
-      this.size = size;
-      this.frequency = 1;
+        } else {
+            // Miss
+            policyStats.recordMiss();
+
+            // There's no enough space in the cache to insert the item
+            if (itemSize > maximumCacheSize) {
+                return;
+            }
+
+            // Evict items until there's enough space
+            while (currentCacheSize + itemSize > maximumCacheSize && !minHeap.isEmpty()) {
+                Prefix victim = minHeap.extractMin().value();
+                currentCacheSize -= victim.size;
+                policyStats.recordEviction();
+            }
+
+            // Insert new item
+            Prefix newPrefix = new Prefix(itemKey, itemSize);
+            minHeap.upsert(itemKey, newPrefix);
+            policyStats.recordOperation();
+            currentCacheSize += itemSize;
+            policyStats.recordAdmission();
+        }
     }
-  }
+
+    public int compareItems(long itemKey1, long itemKey2) {
+        return Long.compare(sketch.frequency(itemKey1), sketch.frequency(itemKey2));
+    }
+
+    @Override
+    public void finished() {
+        Policy.super.finished();
+    }
+
+    @Override
+    public PolicyStats stats() {
+        return policyStats;
+    }
+
+    @Override
+    public String name() {
+        return Policy.super.name();
+    }
+
+    static public class Prefix {
+        public final long key;
+        public final long size;
+        public long frequency;
+
+        public Prefix(long key, long size) {
+            this.key = key;
+            this.size = size;
+            this.frequency = 1;
+        }
+    }
 }

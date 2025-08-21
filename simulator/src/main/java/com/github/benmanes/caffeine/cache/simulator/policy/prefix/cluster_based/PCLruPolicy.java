@@ -92,7 +92,8 @@ public final class PCLruPolicy implements Policy {
     private void onRead(AccessEvent event) {
         long key = event.key();
         Prefix prefix = data.get(key);
-        recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
+        if (event.operation() == AccessEvent.Operation.READ)
+            recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
 
         long size = Math.min(event.itemSize(), chunk_manager.getChunkSize(key, event.itemSize()));
         chunk_manager.addDelay(event.key(), event.retrievalDelay());

@@ -147,7 +147,8 @@ public class PCHillClimberWindowTinyLfuPolicy implements Policy {
     private void onRead(AccessEvent event) {
         final long key = event.key();
         Prefix prefix = data.get(key);
-        recordStats(event.itemSize(), prefix != null ? prefix.weight : 0, event.retrievalDelay());
+        if (event.operation() == AccessEvent.Operation.READ)
+            recordStats(event.itemSize(), prefix != null ? prefix.weight : 0, event.retrievalDelay());
 
         final long weight = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
         chunk_manager.addDelay(event.key(), event.retrievalDelay());

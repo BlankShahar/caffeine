@@ -93,7 +93,8 @@ public final class PSLruPolicy implements Policy {
   private void onRead(AccessEvent event) {
     long key = event.key();
     Prefix prefix = data.get(key);
-    recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
+    if (event.operation() == AccessEvent.Operation.READ)
+      recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
 
     long size = Math.min(event.itemSize(), chunk_manager.getChunkSize(key, event.itemSize()));
 
