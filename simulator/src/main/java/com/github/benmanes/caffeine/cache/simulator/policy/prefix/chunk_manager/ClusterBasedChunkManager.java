@@ -446,17 +446,17 @@ public class ClusterBasedChunkManager {
     this.bandwidth = Consts.BANDWIDTH;
     this.minObs = Consts.MIN_OBS_FOR_CLUSTER;
     this.model = new SXMeans2D(
-      512,
-      128,
-      256,
-      8.0,
-      1500,
-      30,
-      0.02,
-      10,
-      100,
-      42L,
-      17L
+      /*B*/           512,     // ring capacity per cluster
+      /*MIN*/         256,     // need at least this many buffered points to consider a split
+      /*SPLIT_EVERY*/ 100_000,  // how many new points since last check before testing again
+      /*BIC_GAIN*/    10.0,     // slightly conservative; 8.0 if you want more splits
+      /*MERGE_EVERY*/ 1_000_000, // rare merge sweeps
+      /*MIN_COUNT*/   1_000,    // prune tiny clusters
+      /*mergeTol*/    0.015,   // keep it tight
+      /*nInit*/       5,       // few k-means++ restarts
+      /*maxIter*/     40,      // 2D Lloyd converges fast
+      /*seedLo*/      42L,
+      /*seedHi*/      17L
     );
   }
 
@@ -496,7 +496,7 @@ public class ClusterBasedChunkManager {
       point[0] = m;
       point[1] = s;
 
-      int idx = model.assign(point); // nearest now (no centroid update)
+      int idx = assignCurrent(m, s); // nearest now (no centroid update)
       mu = model.cs.get(idx).mu[0];
       sigma = model.cs.get(idx).mu[1];
     } else if (!model.cs.isEmpty()) {
@@ -542,4 +542,7 @@ public class ClusterBasedChunkManager {
     return model.assign(point);
   }
 
+  public synchronized void tryMerge() {
+    model.pruneAndMerge();
+  }
 }

@@ -1,57 +1,41 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager;
 
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.Consts;
-
-import java.util.ArrayList;
-import java.util.HashMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 public class ItemBasedChunkManager implements ChunkManager {
-  private final HashMap<Long, ArrayList<Double>> itemToDelays;
-  private double averageDelay, averageStd, m2;
-  private int requestsCount;
 
-  public ItemBasedChunkManager() {
-    this.itemToDelays = new HashMap<>();
-    this.requestsCount = 0;
-    this.averageDelay = 0.0;
-    this.averageStd = 0.0;
-    this.m2 = 0.0;
+  private static final class Welford {
+    long n = 0;
+    double mean = 0.0, m2 = 0.0;
+
+    void update(double x) {
+      n++;
+      double d = x - mean;
+      mean += d / n;
+      m2 += d * (x - mean);
+    }
+
+    double std() {
+      return n > 1 ? Math.sqrt(m2 / (n - 1)) : 0.0;
+    }
   }
+
+  private final Long2ObjectOpenHashMap<Welford> perItem = new Long2ObjectOpenHashMap<>();
+  private final Welford global = new Welford();
 
   @Override
   public long getChunkSize(long itemKey, long itemSize) {
-    var delays = itemToDelays.get(itemKey);
-    if (delays == null || delays.isEmpty()) {
-      long chunkSize = Math.round((averageDelay + 2 * averageStd) * Consts.BANDWIDTH);
-      return Math.min(chunkSize, itemSize);
-    }
-    double mean = delays.stream().mapToDouble(Double::doubleValue).average().orElse(averageDelay);
-    double denom = Math.max(1, delays.size() - 1); // sample variance
-    double var = delays.stream().mapToDouble(d -> {
-      double x = d - mean;
-      return x * x;
-    }).sum() / denom;
-    long chunk = Math.round((mean + 2 * Math.sqrt(var)) * Consts.BANDWIDTH);
-
-    chunk = Math.min(chunk, itemSize);
-    return Math.max(1L, chunk);
+    Welford st = perItem.get(itemKey);
+    double mu = (st != null && st.n > 0) ? st.mean : global.mean;
+    double sd = (st != null && st.n > 1) ? st.std() : global.std();
+    long bytes = Math.round((mu + 2.0 * sd) * Consts.BANDWIDTH);
+    if (itemSize > 0) bytes = Math.min(bytes, itemSize);
+    return Math.max(1L, bytes);
   }
 
-
-  public void addDelay(long itemKey, double delay) {
-    itemToDelays.computeIfAbsent(itemKey, k -> new ArrayList<>()).add(delay);
-
-    int nPrev = requestsCount;
-    requestsCount = nPrev + 1;
-
-    // Welford's online mean/variance
-    double delta = delay - averageDelay;
-    averageDelay += delta / requestsCount;
-    double delta2 = delay - averageDelay;
-    m2 += delta * delta2;
-
-    // sample std (use /requestsCount for population std)
-    averageStd = (requestsCount > 1) ? Math.sqrt(m2 / (requestsCount - 1)) : 0.0;
+  public void addDelay(long itemKey, double delaySeconds) {
+    perItem.computeIfAbsent(itemKey, k -> new Welford()).update(delaySeconds);
+    global.update(delaySeconds);
   }
-
 }
