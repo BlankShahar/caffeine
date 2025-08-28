@@ -250,21 +250,11 @@ public final class Registry {
   private void registerPrefixItemBased() {
     register(PILfuPolicy.class, PILfuPolicy::new);
     register(PILruPolicy.class, PILruPolicy::new);
-    register(PIHyperbolicPolicy.class, PIHyperbolicPolicy::new);
-    register(PILrfuPolicy.class, PILrfuPolicy::new);
-    register(PISegmentedLruPolicy.class, PISegmentedLruPolicy::new);
-    register(PIArcPolicy.class, PIArcPolicy::new);
-    register(PIHillClimberWindowTinyLfuPolicy.class, PIHillClimberWindowTinyLfuPolicy::new);
   }
 
   private void registerPrefixClusterBased() {
     register(PCLfuPolicy.class, PCLfuPolicy::new);
     register(PCLruPolicy.class, PCLruPolicy::new);
-    register(PCHyperbolicPolicy.class, PCHyperbolicPolicy::new);
-    register(PCLrfuPolicy.class, PCLrfuPolicy::new);
-    register(PCSegmentedLruPolicy.class, PCSegmentedLruPolicy::new);
-    register(PCArcPolicy.class, PCArcPolicy::new);
-    register(PCHillClimberWindowTinyLfuPolicy.class, PCHillClimberWindowTinyLfuPolicy::new);
   }
 
   private void registerSizeAware() {

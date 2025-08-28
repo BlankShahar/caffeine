@@ -1,8 +1,12 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.prefix.chunk_manager;
 
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.Consts;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
 import java.util.stream.Collectors;
 
 /* ======================= RNG: PCG64 (compact) ======================= */
@@ -72,22 +76,44 @@ final class PCG64 {
   }
 }
 
-/* ======================= Welford per item ======================= */
-final class Welford {
-  long n = 0;
-  double mean = 0.0, M2 = 0.0;
+/**
+ * Exponentially-weighted mean & variance (via second moment).
+ */
+final class EmaStats {
+  final double alpha;          // smoothing factor
+  boolean initialized = false;
+  double m = 0.0;              // EMA of x
+  double q = 0.0;              // EMA of x^2
+
+  EmaStats(double alpha) {
+    this.alpha = alpha;
+  }
 
   void update(double x) {
-    n++;
-    double d = x - mean;
-    mean += d / n;
-    M2 += d * (x - mean);
+    if (!initialized) {
+      m = x;
+      q = x * x;
+      initialized = true;
+      return;
+    }
+    double a = alpha, b = 1.0 - a;
+    m = b * m + a * x;
+    q = b * q + a * (x * x);
+  }
+
+  double mean() {
+    return m;
   }
 
   double std() {
-    return n > 1 ? Math.sqrt(M2 / (n - 1)) : 0.0;
+    return Math.sqrt(Math.max(0.0, q - m * m));
+  }
+
+  boolean hasData() {
+    return initialized;
   }
 }
+
 
 /* ======================= Cluster in 2D (mean,std) ======================= */
 final class C2 {
@@ -431,13 +457,16 @@ final class SXMeans2D {
   }
 }
 
-/* ======================= ClusterBasedChunkManager ======================= */
+/* ======================= ClusterBasedChunkManager (EMA-based) ======================= */
 public class ClusterBasedChunkManager {
-
   private final SXMeans2D model;
-  private final Map<Long, Welford> items = new HashMap<>();
+
+  // switched from Welford -> EMA (mean) + EWMA variance (about REAL mean)
+  private final Long2ObjectOpenHashMap<EmaStats> items = new Long2ObjectOpenHashMap<>();
+
   private final int minObs;
   private final double bandwidth;
+  private final double alpha = 0.2;          // EMA smoothing for items
 
   // scratch to avoid allocations in hot path
   private final double[] point = new double[2];
@@ -446,65 +475,61 @@ public class ClusterBasedChunkManager {
     this.bandwidth = Consts.BANDWIDTH;
     this.minObs = Consts.MIN_OBS_FOR_CLUSTER;
     this.model = new SXMeans2D(
-      /*B*/           512,     // ring capacity per cluster
-      /*MIN*/         256,     // need at least this many buffered points to consider a split
-      /*SPLIT_EVERY*/ 100_000,  // how many new points since last check before testing again
-      /*BIC_GAIN*/    10.0,     // slightly conservative; 8.0 if you want more splits
+      /*B*/           4096,      // ring capacity per cluster
+      /*MIN*/         1024,      // need at least this many buffered points to consider a split
+      /*CHECK*/       300_000,   // how many new points since last check before testing again
+      /*BIC_GAIN*/    10.0,      // slightly conservative; 8.0 if you want more splits
       /*MERGE_EVERY*/ 1_000_000, // rare merge sweeps
-      /*MIN_COUNT*/   1_000,    // prune tiny clusters
-      /*mergeTol*/    0.015,   // keep it tight
-      /*nInit*/       5,       // few k-means++ restarts
-      /*maxIter*/     40,      // 2D Lloyd converges fast
+      /*MIN_COUNT*/   1_000,     // prune tiny clusters
+      /*mergeTol*/    0.015,     // keep it tight
+      /*nInit*/       5,         // few k-means++ restarts
+      /*maxIter*/     40,        // 2D Lloyd converges fast
       /*seedLo*/      42L,
       /*seedHi*/      17L
     );
   }
 
-  private Welford statFor(long itemKey) {
-    return items.computeIfAbsent(itemKey, k -> new Welford());
+  private EmaStats statFor(long itemKey) {
+    return items.computeIfAbsent(itemKey, k -> new EmaStats(alpha));
   }
 
   /**
-   * Add one latency sample for an item (equivalent to online partial_fit on (mean,std)).
+   * Add one latency sample for an item (online partial_fit on (mean,std)).
    */
   public synchronized void addDelay(long itemKey, double delaySeconds) {
-    Welford st = statFor(itemKey);
+    EmaStats st = statFor(itemKey);
     st.update(delaySeconds);
-    if (st.n >= minObs) {
-      point[0] = st.mean;
+    if (st.hasData()) {
+      point[0] = st.mean();
       point[1] = Math.max(st.std(), Consts.EPS_STD);
       model.partialFit(point);
     }
   }
 
+
   /**
    * Return chunk size in bytes for a request to itemKey of given size.
    * We (re)assign the item to the CURRENT nearest centroid using its latest (mean,std),
    * then compute (μ + 2·σ) * BANDWIDTH. Clamp to [0, itemSize].
-   * This handles the case where the item was previously in c1 but, after other traffic,
-   * c1 split/merged and the nearest centroid is now c2.
    */
   public synchronized long getChunkSize(long itemKey, long itemSize) {
-    Welford st = items.get(itemKey);
+    EmaStats st = items.get(itemKey);
 
     double mu, sigma;
-
-    if (st != null && st.n > 0 && !model.cs.isEmpty()) {
-      // assign to nearest CURRENT centroid using latest per-item (mean,std)
-      double m = st.mean;
+    if (st != null && st.hasData() && !model.cs.isEmpty()) {
+      double m = st.mean();
       double s = Math.max(st.std(), Consts.EPS_STD);
       point[0] = m;
       point[1] = s;
-
-      int idx = assignCurrent(m, s); // nearest now (no centroid update)
+      int idx = assignCurrent(m, s);
       mu = model.cs.get(idx).mu[0];
       sigma = model.cs.get(idx).mu[1];
     } else if (!model.cs.isEmpty()) {
-      // No per-item history yet – fall back to the most common centroid (closest to overall mean)
-      double best = Double.POSITIVE_INFINITY;
+      // fallback: just take closest centroid
       int idx = 0;
+      double best = Double.POSITIVE_INFINITY;
       for (int i = 0; i < model.cs.size(); i++) {
-        double d = SXMeans2D.dist2(model.cs.get(i).mu, new double[]{model.cs.get(i).mu[0], model.cs.get(i).mu[1]});
+        double d = SXMeans2D.dist2(model.cs.get(i).mu, model.cs.get(i).mu);
         if (d < best) {
           best = d;
           idx = i;
@@ -513,7 +538,6 @@ public class ClusterBasedChunkManager {
       mu = model.cs.get(idx).mu[0];
       sigma = model.cs.get(idx).mu[1];
     } else {
-      // No clusters yet – conservative default
       mu = Consts.DEFAULT_LATENCY_S;
       sigma = 0.0;
     }
@@ -545,4 +569,21 @@ public class ClusterBasedChunkManager {
   public synchronized void tryMerge() {
     model.pruneAndMerge();
   }
+
+  // In ClusterBasedChunkManager (add near other helpers)
+
+  /** Return a snapshot of this item's (mean,std) as used by the manager (EMA). */
+  public synchronized boolean getMeanStd(long itemKey, double[] out) {
+    EmaStats st = items.get(itemKey);
+    if (st == null || !st.hasData()) return false;
+    out[0] = st.mean();
+    out[1] = Math.max(st.std(), Consts.EPS_STD);
+    return true;
+  }
+
+  /** Enumerate the keys the manager is currently tracking. */
+  public synchronized java.util.Set<Long> getTrackedItemKeys() {
+    return new java.util.HashSet<>(items.keySet());
+  }
+
 }
