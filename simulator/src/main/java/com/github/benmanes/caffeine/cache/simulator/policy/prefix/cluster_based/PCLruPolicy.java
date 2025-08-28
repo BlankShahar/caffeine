@@ -14,190 +14,221 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.prefix.TimeCal
 
 @Policy.PolicySpec(name = "prefix.cluster-based.LRU")
 public final class PCLruPolicy implements Policy {
-    final PolicyStats policyStats;
-    final long maximumCacheSize;
+  final PolicyStats policyStats;
+  final long maximumCacheSize;
 
-    long currentCacheSize;
-    long currentTime;
+  long currentCacheSize;
+  long currentTime;
 
-    /**
-     * Fast key -> node lookup
-     */
-    final Long2ObjectOpenHashMap<Prefix> data;
-    /**
-     * LRU order: head = MRU, tail = LRU
-     */
-    final Prefix head;
-    final Prefix tail;
+  /**
+   * Fast key -> node lookup
+   */
+  final Long2ObjectOpenHashMap<Prefix> data;
+  /**
+   * LRU order: head = MRU, tail = LRU
+   */
+  final Prefix head;
+  final Prefix tail;
 
-    final ClusterBasedChunkManager chunk_manager;
+  final ClusterBasedChunkManager chunk_manager;
+  final double RESIZE_RATIO = 0.05;
 
-    public PCLruPolicy(Config config) {
-        var settings = new BasicSettings(config);
-        this.policyStats = new PolicyStats(name());
-        this.maximumCacheSize = settings.maximumSize();
-        this.currentCacheSize = 0L;
-        this.currentTime = 0L;
+  public PCLruPolicy(Config config) {
+    var settings = new BasicSettings(config);
+    this.policyStats = new PolicyStats(name());
+    this.maximumCacheSize = settings.maximumSize();
+    this.currentCacheSize = 0L;
+    this.currentTime = 0L;
 
-        this.data = new Long2ObjectOpenHashMap<>();
-        // Sentinel nodes for simpler list ops
-        this.head = new Prefix(-1, 0);
-        this.tail = new Prefix(-1, 0);
-        head.next = tail;
-        tail.prev = head;
-        chunk_manager = new ClusterBasedChunkManager();
-    }
+    this.data = new Long2ObjectOpenHashMap<>();
+    // Sentinel nodes for simpler list ops
+    this.head = new Prefix(-1, 0);
+    this.tail = new Prefix(-1, 0);
+    head.next = tail;
+    tail.prev = head;
+    chunk_manager = new ClusterBasedChunkManager();
+  }
 
-    @Override
-    public void record(AccessEvent event) {
-        currentTime++;
-        switch (event.operation()) {
-            case READ:
-                onRead(event);
-                break;
-            case WRITE:
-                onWrite(event);
-                break;
-            case DELETE:
-                onDelete(event);
-                break;
-            default:
-                throw new IllegalArgumentException("Unsupported operation: " + event.operation());
-        }
-    }
-
-    private void onWrite(AccessEvent event) {
-        onDelete(event);
+  @Override
+  public void record(AccessEvent event) {
+    currentTime++;
+    switch (event.operation()) {
+      case READ:
         onRead(event);
+        break;
+      case WRITE:
+        onWrite(event);
+        break;
+      case DELETE:
+        onDelete(event);
+        break;
+      default:
+        throw new IllegalArgumentException("Unsupported operation: " + event.operation());
+    }
+  }
+
+  private void onWrite(AccessEvent event) {
+    onDelete(event);
+    onRead(event);
+  }
+
+  private void onDelete(AccessEvent event) {
+    Prefix prefix = data.remove(event.key());
+    if (prefix != null) {
+      detach(prefix);
+      currentCacheSize -= prefix.size;
+      policyStats.recordOperation();
+      policyStats.recordEviction();
+    }
+  }
+
+  private void recordStats(long fullItemSize, long cachedSize, double retrievalDelay) {
+    double delay = calculateUnderflowDelay(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
+    policyStats.addDelay(delay);
+
+    double latency = calculateLatency(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
+    policyStats.addLatency(latency);
+  }
+
+  private void onRead(AccessEvent event) {
+    long key = event.key();
+    Prefix prefix = data.get(key);
+    if (event.operation() == AccessEvent.Operation.READ)
+      recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
+
+    long size = Math.min(event.itemSize(), chunk_manager.getChunkSize(key, event.itemSize()));
+    chunk_manager.addDelay(event.key(), event.retrievalDelay());
+
+    if (prefix != null) {
+      // Hit: move to MRU
+      policyStats.recordHit();
+      prefix.lastAccessTime = currentTime;
+      if (size >= prefix.size * (1 + RESIZE_RATIO) || size <= prefix.size * (1 - RESIZE_RATIO))
+        resizePrefix(prefix, size);
+      moveToHead(prefix);
+      policyStats.recordOperation();
+      return;
     }
 
-    private void onDelete(AccessEvent event) {
-        Prefix prefix = data.remove(event.key());
-        if (prefix != null) {
-            detach(prefix);
-            currentCacheSize -= prefix.size;
-            policyStats.recordOperation();
-            policyStats.recordEviction();
-        }
+    // Miss
+    policyStats.recordMiss();
+
+    // Too big to admit
+    if (size > maximumCacheSize) {
+      return;
     }
 
-    private void recordStats(long fullItemSize, long cachedSize, double retrievalDelay) {
-        double delay = calculateUnderflowDelay(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
-        policyStats.addDelay(delay);
-
-        double latency = calculateLatency(retrievalDelay, fullItemSize, cachedSize, Consts.BANDWIDTH);
-        policyStats.addLatency(latency);
+    // Evict from the LRU end until it fits
+    while (currentCacheSize + size > maximumCacheSize && !isEmpty()) {
+      Prefix victim = removeLRU();
+      data.remove(victim.key);
+      currentCacheSize -= victim.size;
+      policyStats.recordEviction();
     }
 
-    private void onRead(AccessEvent event) {
-        long key = event.key();
-        Prefix prefix = data.get(key);
-        if (event.operation() == AccessEvent.Operation.READ)
-            recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
+    // Admit
+    Prefix newPrefix = new Prefix(key, size);
+    newPrefix.lastAccessTime = currentTime;
+    addToHead(newPrefix);
+    data.put(key, newPrefix);
+    currentCacheSize += size;
+    policyStats.recordOperation();
+    policyStats.recordAdmission();
+  }
 
-        long size = Math.min(event.itemSize(), chunk_manager.getChunkSize(key, event.itemSize()));
-        chunk_manager.addDelay(event.key(), event.retrievalDelay());
+  // ==== Doubly-linked list helpers (head = MRU, tail = LRU) ====
 
-        if (prefix != null) {
-            // Hit: move to MRU
-            policyStats.recordHit();
-            prefix.lastAccessTime = currentTime;
-            moveToHead(prefix);
-            policyStats.recordOperation();
-            return;
-        }
+  private boolean isEmpty() {
+    return head.next == tail;
+  }
 
-        // Miss
-        policyStats.recordMiss();
+  private void moveToHead(Prefix prefix) {
+    detach(prefix);
+    addToHead(prefix);
+  }
 
-        // Too big to admit
-        if (size > maximumCacheSize) {
-            return;
-        }
+  private void addToHead(Prefix prefix) {
+    prefix.next = head.next;
+    prefix.prev = head;
+    head.next.prev = prefix;
+    head.next = prefix;
+  }
 
-        // Evict from the LRU end until it fits
-        while (currentCacheSize + size > maximumCacheSize && !isEmpty()) {
-            Prefix victim = removeLRU();
-            data.remove(victim.key);
-            currentCacheSize -= victim.size;
-            policyStats.recordEviction();
-        }
+  private void detach(Prefix prefix) {
+    prefix.prev.next = prefix.next;
+    prefix.next.prev = prefix.prev;
+    prefix.prev = null;
+    prefix.next = null;
+  }
 
-        // Admit
-        Prefix newPrefix = new Prefix(key, size);
-        newPrefix.lastAccessTime = currentTime;
-        addToHead(newPrefix);
-        data.put(key, newPrefix);
-        currentCacheSize += size;
-        policyStats.recordOperation();
-        policyStats.recordAdmission();
+  /**
+   * Removes and returns LRU node (at tail.prev).
+   */
+  private Prefix removeLRU() {
+    Prefix lru = tail.prev;
+    if (lru == head) {
+      return null; // should not happen; caller checks empty
+    }
+    detach(lru);
+    return lru;
+  }
+
+  private void resizePrefix(Prefix prefix, long newSize) {
+    if (newSize == 0) { // shrink to zero -> remove
+      data.remove(prefix.key);
+      detach(prefix);
+      currentCacheSize -= prefix.size;
+      policyStats.recordOperation();
+      policyStats.recordEviction();
     }
 
-    // ==== Doubly-linked list helpers (head = MRU, tail = LRU) ====
-
-    private boolean isEmpty() {
-        return head.next == tail;
+    if (newSize < prefix.size) { // shrink
+      long delta = prefix.size - newSize;
+      prefix.size = newSize;
+      currentCacheSize -= delta;
     }
 
-    private void moveToHead(Prefix prefix) {
-        detach(prefix);
-        addToHead(prefix);
+    if (newSize > prefix.size) { // grow
+      long delta = newSize - prefix.size;
+      while (currentCacheSize + delta > maximumCacheSize && !isEmpty()) { // make space
+        Prefix victim = removeLRU();
+        data.remove(victim.key);
+        currentCacheSize -= victim.size;
+        policyStats.recordEviction();
+      }
+      prefix.size = newSize;
+      currentCacheSize += delta;
     }
+  }
 
-    private void addToHead(Prefix prefix) {
-        prefix.next = head.next;
-        prefix.prev = head;
-        head.next.prev = prefix;
-        head.next = prefix;
+  @Override
+  public void finished() {
+    Policy.super.finished();
+  }
+
+  @Override
+  public PolicyStats stats() {
+    return policyStats;
+  }
+
+  @Override
+  public String name() {
+    return Policy.super.name();
+  }
+
+  // ==== Node (formerly Item) ====
+
+  static final class Prefix {
+    final long key;
+    long size;
+    long lastAccessTime;
+    Prefix prev;
+    Prefix next;
+
+    Prefix(long key, long size) {
+      this.key = key;
+      this.size = size;
+      this.lastAccessTime = 0L;
     }
-
-    private void detach(Prefix prefix) {
-        prefix.prev.next = prefix.next;
-        prefix.next.prev = prefix.prev;
-        prefix.prev = null;
-        prefix.next = null;
-    }
-
-    /**
-     * Removes and returns LRU node (at tail.prev).
-     */
-    private Prefix removeLRU() {
-        Prefix lru = tail.prev;
-        if (lru == head) {
-            return null; // should not happen; caller checks empty
-        }
-        detach(lru);
-        return lru;
-    }
-
-    @Override
-    public void finished() {
-        Policy.super.finished();
-    }
-
-    @Override
-    public PolicyStats stats() {
-        return policyStats;
-    }
-
-    @Override
-    public String name() {
-        return Policy.super.name();
-    }
-
-    // ==== Node (formerly Item) ====
-
-    static final class Prefix {
-        final long key;
-        final long size;
-        long lastAccessTime;
-        Prefix prev;
-        Prefix next;
-
-        Prefix(long key, long size) {
-            this.key = key;
-            this.size = size;
-            this.lastAccessTime = 0L;
-        }
-    }
+  }
 }
