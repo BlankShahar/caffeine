@@ -431,7 +431,7 @@ public class NormalSource extends Source {
 
   @Override
   public long getChunkSize() {
-    return (long) (Consts.BANDWIDTH * (mean + 2 * standardDeviation));
+    return Math.round(Consts.BANDWIDTH * (mean + 2 * standardDeviation));
   }
 
   @Override
