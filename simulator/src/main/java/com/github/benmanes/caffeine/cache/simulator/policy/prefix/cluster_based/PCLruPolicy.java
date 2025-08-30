@@ -186,6 +186,7 @@ public final class PCLruPolicy implements Policy {
       long delta = prefix.size - newSize;
       prefix.size = newSize;
       currentCacheSize -= delta;
+      policyStats.recordOperation();
     }
 
     if (newSize > prefix.size) { // grow
@@ -195,9 +196,12 @@ public final class PCLruPolicy implements Policy {
         data.remove(victim.key);
         currentCacheSize -= victim.size;
         policyStats.recordEviction();
+        policyStats.recordOperation();
       }
+
       prefix.size = newSize;
       currentCacheSize += delta;
+      policyStats.recordOperation();
     }
   }
 

@@ -153,6 +153,7 @@ public final class PILfuPolicy implements Policy {
       long delta = prefix.size - newSize;
       prefix.size = newSize;
       currentCacheSize -= delta;
+      policyStats.recordOperation();
     }
 
     if (newSize > prefix.size) { // grow
@@ -161,9 +162,12 @@ public final class PILfuPolicy implements Policy {
         Prefix victim = minHeap.extractMin().value();
         currentCacheSize -= victim.size;
         policyStats.recordEviction();
+        policyStats.recordOperation();
       }
+
       prefix.size = newSize;
       currentCacheSize += delta;
+      policyStats.recordOperation();
     }
   }
 

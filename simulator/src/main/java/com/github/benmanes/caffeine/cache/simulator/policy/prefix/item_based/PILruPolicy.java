@@ -202,6 +202,7 @@ public final class PILruPolicy implements Policy {
       long delta = prefix.size - newSize;
       prefix.size = newSize;
       currentCacheSize -= delta;
+      policyStats.recordOperation();
     }
 
     if (newSize > prefix.size) { // grow
@@ -211,9 +212,12 @@ public final class PILruPolicy implements Policy {
         data.remove(victim.key);
         currentCacheSize -= victim.size;
         policyStats.recordEviction();
+        policyStats.recordOperation();
       }
+
       prefix.size = newSize;
       currentCacheSize += delta;
+      policyStats.recordOperation();
     }
   }
   // ==== Node (formerly Item) ====
