@@ -152,8 +152,10 @@ public final class PSLruPolicy implements Policy {
   }
 
   private void detach(Prefix prefix) {
-    prefix.prev.next = prefix.next;
-    prefix.next.prev = prefix.prev;
+    if (prefix.prev != null)
+      prefix.prev.next = prefix.next;
+    if (prefix.next != null)
+      prefix.next.prev = prefix.prev;
     prefix.prev = null;
     prefix.next = null;
   }
