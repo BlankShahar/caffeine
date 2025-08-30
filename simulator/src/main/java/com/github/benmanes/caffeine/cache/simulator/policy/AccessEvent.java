@@ -29,7 +29,7 @@ import static com.google.common.base.Preconditions.checkArgument;
  */
 public class AccessEvent {
   private final long key;
-  public long itemSize;
+  private final long itemSize;
 
   public enum Operation {
     READ,
@@ -39,6 +39,12 @@ public class AccessEvent {
 
   private AccessEvent(long key) {
     this.key = key;
+    this.itemSize = 0;
+  }
+
+  private AccessEvent(long key, long itemSize) {
+    this.key = key;
+    this.itemSize = itemSize;
   }
 
   /**
@@ -87,14 +93,14 @@ public class AccessEvent {
    * Returns the requested item size of the entry.
    */
   public long itemSize() {
-    return 0;
+    return itemSize;
   }
 
   /**
    * Returns the operation type of the entry.
    * <p>
    * The operation is a hint for the policy to determine the type of access,
-   *  such as read(0), write(1) or delete(2).
+   * such as read(0), write(1) or delete(2).
    *
    * @return the operation type, the default is 0 (read)
    */
@@ -152,7 +158,7 @@ public class AccessEvent {
   /**
    * Returns an event for the given key, operation, size and delay.
    * Operation is a hint for the policy to determine the type of access,
-   *  such as read(0), write(1) or delete(2).
+   * such as read(0), write(1) or delete(2).
    */
   public static AccessEvent forKeyAndOperationAndSizeAndDelay(long key, int operation, long itemSize, double underflowDelay) {
     return new DelayAccessEvent(key, operation, itemSize, underflowDelay);
@@ -213,8 +219,7 @@ public class AccessEvent {
     private final double underflowDelay;
 
     DelayAccessEvent(long key, int operation, long itemSize, double underflowDelay) {
-      super(key);
-      this.itemSize = itemSize;
+      super(key, itemSize);
       this.operation = operation;
       this.underflowDelay = underflowDelay;
       checkArgument(itemSize >= 0);
@@ -225,11 +230,6 @@ public class AccessEvent {
     @Override
     public double retrievalDelay() {
       return underflowDelay;
-    }
-
-    @Override
-    public long itemSize() {
-      return itemSize;
     }
 
     @Override

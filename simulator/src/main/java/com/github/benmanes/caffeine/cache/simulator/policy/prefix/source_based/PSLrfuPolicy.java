@@ -86,10 +86,10 @@ public final class PSLrfuPolicy implements Policy {
     Prefix prefix = heap.get(event.key());
     if (event.operation() == AccessEvent.Operation.READ)
       recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
-    event.itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
+    long itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
 
     if (prefix == null) {
-      prefix = new Prefix(event.key(), event.itemSize(), currentTime);
+      prefix = new Prefix(event.key(), itemSize, currentTime);
     }
     updateScore(prefix);
 

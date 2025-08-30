@@ -96,10 +96,10 @@ public final class PSArcPolicy implements Policy {
     if (event.operation() == AccessEvent.Operation.READ)
       recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
 
-    event.itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
+    long itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
 
     if (prefix == null) {
-      onMiss(event);
+      onMiss(event.key(), itemSize);
       return;
     }
 
@@ -160,11 +160,10 @@ public final class PSArcPolicy implements Policy {
     sizeT2 += n.size;
   }
 
-  private void onMiss(AccessEvent event) {
-    long size = event.itemSize();
+  private void onMiss(long itemKey, long itemSize) {
     policyStats.recordMiss();
 
-    if (size > maximumCacheSize) {
+    if (itemSize > maximumCacheSize) {
       return;
     }
 
@@ -183,14 +182,14 @@ public final class PSArcPolicy implements Policy {
       }
     }
 
-    if (size <= (maximumCacheSize - sizeT2)) {
-      evictToMakeSpace(Q.T1, size);
-      Prefix n = new Prefix(event.key(), size);
+    if (itemSize <= (maximumCacheSize - sizeT2)) {
+      evictToMakeSpace(Q.T1, itemSize);
+      Prefix n = new Prefix(itemKey, itemSize);
       n.q = Q.T1;
       n.appendToTail(headT1);
       policyStats.recordOperation();
-      data.put(event.key(), n);
-      sizeT1 += size;
+      data.put(itemKey, n);
+      sizeT1 += itemSize;
     }
   }
 

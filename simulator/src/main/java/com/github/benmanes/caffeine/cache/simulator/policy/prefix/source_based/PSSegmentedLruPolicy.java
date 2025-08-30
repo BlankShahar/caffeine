@@ -112,9 +112,9 @@ public final class PSSegmentedLruPolicy implements Policy {
     Prefix prefix = data.get(event.key());
     if (event.operation() == AccessEvent.Operation.READ)
       recordStats(event.itemSize(), prefix != null ? prefix.size : 0, event.retrievalDelay());
-    event.itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
+    long itemSize = Math.min(event.itemSize(), chunk_manager.getChunkSize(event.key(), event.itemSize()));
 
-    if (prefix == null) onMiss(event.key(), event.retrievalDelay(), event.itemSize());
+    if (prefix == null) onMiss(event.key(), event.retrievalDelay(), itemSize);
     else onHit(prefix);
   }
 

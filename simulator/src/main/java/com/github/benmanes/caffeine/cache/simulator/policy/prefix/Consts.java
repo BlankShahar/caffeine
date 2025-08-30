@@ -16,14 +16,11 @@ public final class Consts {
   public static final double DEFAULT_LATENCY_S = 0.2;
 
   static {
-    SOURCES.add(new NormalSource(0, 0.675, 0.01431));
+//  SOURCES.add(new NormalSource(0, 0.1283, 0.013));
+  SOURCES.add(new NormalSource(1, 0.1793, 0.013));
+//  SOURCES.add(new NormalSource(2, 0.3455, 0.013));
+  SOURCES.add(new NormalSource(3, 0.4793, 0.013));
+//  SOURCES.add(new NormalSource(4, 0.6863, 0.013));
+  SOURCES.add(new NormalSource(5, 0.8039, 0.013));
   }
-//  static {
-//    SOURCES.add(new NormalSource(0, 0.4793, 0.013));
-//    SOURCES.add(new NormalSource(1, 0.3455, 0.013));
-//    SOURCES.add(new NormalSource(2, 0.6863, 0.013));
-//    SOURCES.add(new NormalSource(3, 0.8039, 0.013));
-//    SOURCES.add(new NormalSource(4, 0.1283, 0.013));
-//    SOURCES.add(new NormalSource(5, 0.1793, 0.013));
-//  }
 }
