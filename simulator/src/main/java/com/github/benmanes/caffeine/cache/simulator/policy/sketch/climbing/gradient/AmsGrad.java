@@ -42,7 +42,7 @@ public final class AmsGrad extends AbstractClimber {
   public AmsGrad(Config config) {
     var settings = new AmsGradSettings(config);
     int maximumSize = Math.toIntExact(settings.maximumSize());
-    sampleSize = (int) (settings.percentSample() * maximumSize);
+    sampleSize = (long) (settings.percentSample() * maximumSize);
     stepSize = (int) (settings.percentPivot() * maximumSize);
     epsilon = settings.epsilon();
     beta1 = settings.beta1();

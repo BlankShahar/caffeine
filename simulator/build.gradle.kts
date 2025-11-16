@@ -39,6 +39,7 @@ dependencies {
   implementation(libs.bundles.slf4j.jdk)
   implementation(libs.univocity.parsers)
   implementation(libs.zero.allocation.hashing)
+  implementation("me.tongfei:progressbar:0.9.5")
 }
 
 application {

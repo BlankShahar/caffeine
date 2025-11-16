@@ -15,49 +15,97 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy;
 
-import static com.google.common.base.Preconditions.checkArgument;
+import com.google.common.base.MoreObjects;
 
 import java.util.Objects;
 
-import com.google.common.base.MoreObjects;
-import com.google.errorprone.annotations.Immutable;
+import static com.google.common.base.Preconditions.checkArgument;
+
 
 /**
  * The key and metadata for accessing a cache.
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
-@Immutable
 public class AccessEvent {
   private final long key;
+  private final long itemSize;
+
+  public enum Operation {
+    READ,
+    WRITE,
+    DELETE
+  }
 
   private AccessEvent(long key) {
     this.key = key;
+    this.itemSize = 0;
   }
 
-  /** Returns the key. */
+  private AccessEvent(long key, long itemSize) {
+    this.key = key;
+    this.itemSize = itemSize;
+  }
+
+  /**
+   * Returns the key.
+   */
   public long key() {
     return key;
   }
 
-  /** Returns the weight of the entry. */
+  /**
+   * Returns the weight of the entry.
+   */
   public int weight() {
     return 1;
   }
 
-  /** Returns the hit penalty of the entry. */
+  /**
+   * Returns the hit penalty of the entry.
+   */
   public double hitPenalty() {
     return 0;
   }
 
-  /** Returns the miss penalty of the entry. */
+  /**
+   * Returns the miss penalty of the entry.
+   */
   public double missPenalty() {
     return 0;
   }
 
-  /** Returns if the trace supplies the hit/miss penalty for this entry. */
+  /**
+   * Returns if the trace supplies the hit/miss penalty for this entry.
+   */
   public boolean isPenaltyAware() {
     return false;
+  }
+
+  /**
+   * Returns the underflow delay of the entry.
+   */
+  public double retrievalDelay() {
+    return 0;
+  }
+
+  /**
+   * Returns the requested item size of the entry.
+   */
+  public long itemSize() {
+    return itemSize;
+  }
+
+  /**
+   * Returns the operation type of the entry.
+   * <p>
+   * The operation is a hint for the policy to determine the type of access,
+   * such as read(0), write(1) or delete(2).
+   *
+   * @return the operation type, the default is 0 (read)
+   */
+  public Operation operation() {
+    return Operation.READ;
   }
 
   @Override
@@ -69,9 +117,11 @@ public class AccessEvent {
     }
     var event = (AccessEvent) o;
     return (key() == event.key())
-        && (weight() == event.weight())
-        && (hitPenalty() == event.hitPenalty())
-        && (missPenalty() == event.missPenalty());
+      && (weight() == event.weight())
+      && (hitPenalty() == event.hitPenalty())
+      && (missPenalty() == event.missPenalty())
+      && (retrievalDelay() == event.retrievalDelay())
+      && (itemSize() == event.itemSize());
   }
 
   @Override
@@ -82,24 +132,41 @@ public class AccessEvent {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("key", key())
-        .add("weight", weight())
-        .add("hit penalty", hitPenalty())
-        .add("miss penalty", missPenalty())
-        .toString();
+      .add("key", key())
+      .add("weight", weight())
+      .add("hit penalty", hitPenalty())
+      .add("miss penalty", missPenalty())
+      .add("retrieval delay", retrievalDelay())
+      .add("item size", itemSize())
+      .toString();
   }
 
-  /** Returns an event for the given key. */
+  /**
+   * Returns an event for the given key.
+   */
   public static AccessEvent forKey(long key) {
     return new AccessEvent(key);
   }
 
-  /** Returns an event for the given key and weight. */
+  /**
+   * Returns an event for the given key and weight.
+   */
   public static AccessEvent forKeyAndWeight(long key, int weight) {
     return new WeightedAccessEvent(key, weight);
   }
 
-  /** Returns an event for the given key and penalties. */
+  /**
+   * Returns an event for the given key, operation, size and delay.
+   * Operation is a hint for the policy to determine the type of access,
+   * such as read(0), write(1) or delete(2).
+   */
+  public static AccessEvent forKeyAndOperationAndSizeAndDelay(long key, int operation, long itemSize, double underflowDelay) {
+    return new DelayAccessEvent(key, operation, itemSize, underflowDelay);
+  }
+
+  /**
+   * Returns an event for the given key and penalties.
+   */
   public static AccessEvent forKeyAndPenalties(long key, double hitPenalty, double missPenalty) {
     return new PenaltiesAccessEvent(key, hitPenalty, missPenalty);
   }
@@ -112,7 +179,9 @@ public class AccessEvent {
       this.weight = weight;
       checkArgument(weight >= 0);
     }
-    @Override public int weight() {
+
+    @Override
+    public int weight() {
       return weight;
     }
   }
@@ -128,14 +197,53 @@ public class AccessEvent {
       checkArgument(hitPenalty >= 0);
       checkArgument(missPenalty >= hitPenalty);
     }
-    @Override public double missPenalty() {
+
+    @Override
+    public double missPenalty() {
       return missPenalty;
     }
-    @Override public double hitPenalty() {
+
+    @Override
+    public double hitPenalty() {
       return hitPenalty;
     }
-    @Override public boolean isPenaltyAware() {
+
+    @Override
+    public boolean isPenaltyAware() {
       return true;
+    }
+  }
+
+  public static final class DelayAccessEvent extends AccessEvent {
+    private final int operation;
+    private final double underflowDelay;
+
+    DelayAccessEvent(long key, int operation, long itemSize, double underflowDelay) {
+      super(key, itemSize);
+      this.operation = operation;
+      this.underflowDelay = underflowDelay;
+      checkArgument(itemSize >= 0);
+      checkArgument(operation >= 0 && operation <= 2);
+      checkArgument(underflowDelay >= 0);
+    }
+
+    @Override
+    public double retrievalDelay() {
+      return underflowDelay;
+    }
+
+    @Override
+    public Operation operation() {
+      switch (operation) {
+        case 0:
+          return Operation.READ;
+        case 1:
+          return Operation.WRITE;
+        case 2:
+          return Operation.DELETE;
+        default:
+          throw new IllegalArgumentException("Unsupported operation: " + operation);
+      }
     }
   }
 }

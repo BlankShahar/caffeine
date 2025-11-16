@@ -15,10 +15,6 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.product;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
-
-import java.util.Set;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
@@ -27,6 +23,10 @@ import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.typesafe.config.Config;
+
+import java.util.Set;
+
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 
 /**
  * Guava cache implementation.
@@ -42,7 +42,7 @@ public final class GuavaPolicy implements Policy {
     policyStats = new PolicyStats(name());
     var settings = new BasicSettings(config);
     CacheBuilder<Long, AccessEvent> builder = CacheBuilder.newBuilder()
-        .removalListener(notification -> policyStats.recordEviction());
+      .removalListener(notification -> policyStats.recordEviction());
     if (characteristics.contains(WEIGHTED)) {
       builder.maximumWeight(settings.maximumSize());
       builder.weigher((key, value) -> value.weight());
@@ -54,12 +54,15 @@ public final class GuavaPolicy implements Policy {
 
   @Override
   public void record(AccessEvent event) {
-    AccessEvent value = cache.getIfPresent(event.key());
+    long key = event.key();
+    AccessEvent value = cache.getIfPresent(key);
+
     if (value == null) {
       cache.put(event.key(), event);
       policyStats.recordWeightedMiss(event.weight());
     } else {
       policyStats.recordWeightedHit(event.weight());
+
       if (event.weight() != value.weight()) {
         cache.put(event.key(), event);
       }

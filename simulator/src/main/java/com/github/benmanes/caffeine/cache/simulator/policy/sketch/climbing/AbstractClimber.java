@@ -25,7 +25,7 @@ import static com.google.common.base.Preconditions.checkState;
 public abstract class AbstractClimber implements HillClimber {
   private static final boolean debug = false;
 
-  protected int sampleSize;
+  protected long sampleSize;
   protected int hitsInMain;
   protected int hitsInWindow;
   protected int hitsInSample;
@@ -53,15 +53,14 @@ public abstract class AbstractClimber implements HillClimber {
   }
 
   @Override
-  public Adaptation adapt(double windowSize, double probationSize,
-      double protectedSize, boolean isFull) {
+  public Adaptation adapt(double windowSize, double probationSize, double protectedSize, boolean isFull) {
     if (!isFull) {
       return Adaptation.hold();
     }
 
-    checkState(sampleSize > 0, "Sample size may not be zero");
+    checkState(sampleSize >= 0, "Sample size may not be zero");
     int sampleCount = (hitsInSample + missesInSample);
-    if (sampleCount < sampleSize) {
+    if (sampleCount < sampleSize || sampleSize == 0) {
       return Adaptation.hold();
     }
 
@@ -75,10 +74,14 @@ public abstract class AbstractClimber implements HillClimber {
     return adaption;
   }
 
-  /** Returns the amount to adapt by. */
+  /**
+   * Returns the amount to adapt by.
+   */
   protected abstract double adjust(double hitRate);
 
-  /** Starts the next sample period. */
+  /**
+   * Starts the next sample period.
+   */
   protected void resetSample(double hitRate) {
     previousHitRate = hitRate;
     missesInSample = 0;

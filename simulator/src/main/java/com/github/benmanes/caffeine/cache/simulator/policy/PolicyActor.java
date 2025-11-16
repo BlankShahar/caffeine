@@ -62,6 +62,10 @@ public final class PolicyActor {
     submit(new Finish());
   }
 
+  public String getPolicyName(){
+    return policy.name();
+  }
+
   /** Return the future that signals the policy's completion. */
   public CompletableFuture<Void> completed() {
     return completed;

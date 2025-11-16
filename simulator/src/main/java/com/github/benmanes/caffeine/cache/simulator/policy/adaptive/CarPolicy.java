@@ -15,20 +15,19 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.adaptive;
 
-import static com.google.common.base.Preconditions.checkState;
-
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
-import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
+import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.MoreObjects;
 import com.google.errorprone.annotations.Var;
 import com.typesafe.config.Config;
-
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import org.checkerframework.checker.nullness.qual.Nullable;
+
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Clock with Adaptive Replacement policy. This algorithm differs from ARC by replacing the LRU
@@ -45,7 +44,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  * @author ben.manes@gmail.com (Ben Manes)
  */
 @PolicySpec(name = "adaptive.Car")
-public final class CarPolicy implements KeyOnlyPolicy {
+public final class CarPolicy implements Policy {
   private final Long2ObjectMap<Node> data;
   private final PolicyStats policyStats;
   private final int maximumSize;
@@ -66,21 +65,25 @@ public final class CarPolicy implements KeyOnlyPolicy {
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     this.policyStats = new PolicyStats(name());
     this.data = new Long2ObjectOpenHashMap<>();
-    this.headT1 = new Node();
-    this.headT2 = new Node();
-    this.headB1 = new Node();
-    this.headB2 = new Node();
+
+    this.headT1 = new Node(1);
+    this.headT2 = new Node(1);
+    this.headB1 = new Node(1);
+    this.headB2 = new Node(1);
   }
 
   @Override
-  public void record(long key) {
-    Node node = data.get(key);
+  public void record(AccessEvent event) {
+    Node node = data.get(event.key());
+
     if (isHit(node)) {
       policyStats.recordHit();
+
       onHit(node);
     } else {
       policyStats.recordMiss();
-      onMiss(key, node);
+
+      onMiss(event.key(), node);
     }
   }
 
@@ -141,7 +144,7 @@ public final class CarPolicy implements KeyOnlyPolicy {
       // Insert x at the tail of T1
       // Reset the page reference bit of x
       checkState(node == null);
-      node = new Node(key);
+      node = new Node(key, 1);
       node.appendToTail(headT1);
       node.type = QueueType.T1;
       data.put(key, node);
@@ -196,9 +199,9 @@ public final class CarPolicy implements KeyOnlyPolicy {
     // until (found)
 
     policyStats.recordEviction();
-    for (;;) {
+    for (; ; ) {
       policyStats.recordOperation();
-      if (sizeT1 >= Math.max(1,  p)) {
+      if (sizeT1 >= Math.max(1, p)) {
         Node candidate = headT1.next;
         if (!candidate.marked) {
           candidate.remove();
@@ -256,24 +259,32 @@ public final class CarPolicy implements KeyOnlyPolicy {
 
   static final class Node {
     final long key;
+    final double size; // in MB
 
-    @Nullable Node prev;
-    @Nullable Node next;
-    @Nullable QueueType type;
+    @Nullable
+    Node prev;
+    @Nullable
+    Node next;
+    @Nullable
+    QueueType type;
 
     boolean marked;
 
-    Node() {
+    Node(double size) {
       this.key = Long.MIN_VALUE;
       this.prev = this;
       this.next = this;
+      this.size = size;
     }
 
-    Node(long key) {
+    Node(long key, double size) {
       this.key = key;
+      this.size = size;
     }
 
-    /** Appends the node to the tail of the list. */
+    /**
+     * Appends the node to the tail of the list.
+     */
     public void appendToTail(Node head) {
       Node tail = head.prev;
       head.prev = this;
@@ -282,7 +293,9 @@ public final class CarPolicy implements KeyOnlyPolicy {
       prev = tail;
     }
 
-    /** Removes the node from the list. */
+    /**
+     * Removes the node from the list.
+     */
     public void remove() {
       prev.next = next;
       next.prev = prev;
@@ -293,9 +306,9 @@ public final class CarPolicy implements KeyOnlyPolicy {
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
-          .add("key", key)
-          .add("type", type)
-          .toString();
+        .add("key", key)
+        .add("type", type)
+        .toString();
     }
   }
 }

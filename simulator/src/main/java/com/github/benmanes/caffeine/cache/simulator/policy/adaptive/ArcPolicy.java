@@ -15,19 +15,18 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.adaptive;
 
-import static com.google.common.base.Preconditions.checkState;
-
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
-import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
+import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
-
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import org.checkerframework.checker.nullness.qual.Nullable;
+
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Adaptive Replacement Cache. This algorithm uses a queue for items that are seen once (T1), a
@@ -47,7 +46,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  * @author ben.manes@gmail.com (Ben Manes)
  */
 @PolicySpec(name = "adaptive.Arc")
-public final class ArcPolicy implements KeyOnlyPolicy {
+public final class ArcPolicy implements Policy {
   // In Cache:
   // - T1: Pages that have been accessed at least once
   // - T2: Pages that have been accessed at least twice
@@ -78,22 +77,23 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     this.policyStats = new PolicyStats(name());
     this.data = new Long2ObjectOpenHashMap<>();
-    this.headT1 = new Node();
-    this.headT2 = new Node();
-    this.headB1 = new Node();
-    this.headB2 = new Node();
+    this.headT1 = new Node(1);
+    this.headT2 = new Node(1);
+    this.headB1 = new Node(1);
+    this.headB2 = new Node(1);
   }
 
   @Override
-  public void record(long key) {
+  public void record(AccessEvent event) {
     policyStats.recordOperation();
-    Node node = data.get(key);
+
+    Node node = data.get(event.key());
     if (node == null) {
-      onMiss(key);
+      onMiss(event.key(), event.retrievalDelay(), event.itemSize());
     } else if (node.type == QueueType.B1) {
-      onHitB1(node);
+      onHitB1(node, event.retrievalDelay());
     } else if (node.type == QueueType.B2) {
-      onHitB2(node);
+      onHitB2(node, event.retrievalDelay());
     } else {
       onHit(node);
     }
@@ -109,10 +109,11 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.remove();
     node.type = QueueType.T2;
     node.appendToTail(headT2);
+
     policyStats.recordHit();
   }
 
-  private void onHitB1(Node node) {
+  private void onHitB1(Node node, double retrievalDelay) {
     // x ∈ B1 (a miss in ARC(c), a hit in DBL(2c)):
     // Adapt p = min{ c, p + max{ |B2| / |B1|, 1} }. REPLACE(p).
     // Move x to the top of T2 and place it in the cache.
@@ -125,10 +126,11 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.remove();
     node.type = QueueType.T2;
     node.appendToTail(headT2);
+
     policyStats.recordMiss();
   }
 
-  private void onHitB2(Node node) {
+  private void onHitB2(Node node, double retrievalDelay) {
     // x ∈ B2 (a miss in ARC(c), a hit in DBL(2c)):
     // Adapt p = max{ 0, p – max{ |B1| / |B2|, 1} } . REPLACE(p).
     // Move x to the top of T2 and place it in the cache.
@@ -141,10 +143,11 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     node.remove();
     node.type = QueueType.T2;
     node.appendToTail(headT2);
+
     policyStats.recordMiss();
   }
 
-  private void onMiss(long key) {
+  private void onMiss(long key, double retrievalDelay, long itemSize) {
     // x ∈ L1 ∪ L2 (a miss in DBL(2c) and ARC(c)):
     // case (i) |L1| = c:
     //   If |T1| < c then delete the LRU page of B1 and REPLACE(p).
@@ -154,7 +157,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     //   REPLACE(p) .
     // Put x at the top of T1 and place it in the cache.
 
-    var node = new Node(key);
+    var node = new Node(key, itemSize);
     node.type = QueueType.T1;
 
     int sizeL1 = (sizeT1 + sizeB1);
@@ -190,7 +193,9 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     policyStats.recordMiss();
   }
 
-  /** Evicts while the map exceeds the maximum capacity. */
+  /**
+   * Evicts while the map exceeds the maximum capacity.
+   */
   private void evict(Node candidate) {
     // if (|T1| ≥ 1) and ((x ∈ B2 and |T1| = p) or (|T1| > p))
     //   then move the LRU page of T1 to the top of B1 and remove it from the cache.
@@ -238,22 +243,30 @@ public final class ArcPolicy implements KeyOnlyPolicy {
 
   static final class Node {
     final long key;
+    final double size; // in MB
 
-    @Nullable Node prev;
-    @Nullable Node next;
-    @Nullable QueueType type;
+    @Nullable
+    Node prev;
+    @Nullable
+    Node next;
+    @Nullable
+    QueueType type;
 
-    Node() {
+    Node(double size) {
       this.key = Long.MIN_VALUE;
       this.prev = this;
       this.next = this;
+      this.size = size;
     }
 
-    Node(long key) {
+    Node(long key, double size) {
       this.key = key;
+      this.size = size;
     }
 
-    /** Appends the node to the tail of the list. */
+    /**
+     * Appends the node to the tail of the list.
+     */
     public void appendToTail(Node head) {
       Node tail = head.prev;
       head.prev = this;
@@ -262,7 +275,9 @@ public final class ArcPolicy implements KeyOnlyPolicy {
       prev = tail;
     }
 
-    /** Removes the node from the list. */
+    /**
+     * Removes the node from the list.
+     */
     public void remove() {
       prev.next = next;
       next.prev = prev;
@@ -273,9 +288,9 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
-          .add("key", key)
-          .add("type", type)
-          .toString();
+        .add("key", key)
+        .add("type", type)
+        .toString();
     }
   }
 }

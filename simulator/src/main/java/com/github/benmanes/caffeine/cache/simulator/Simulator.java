@@ -65,7 +65,9 @@ public final class Simulator {
     settings = new BasicSettings(config.getConfig("caffeine.simulator"));
   }
 
-  /** Broadcast the trace events to all of the policy actors. */
+  /**
+   * Broadcast the trace events to all of the policy actors.
+   */
   public void run() {
     var trace = getTraceReader(settings);
     var policies = getPolicyActors(trace.characteristics());
@@ -106,8 +108,11 @@ public final class Simulator {
       }
 
       var futures = policies.stream()
-          .map(PolicyActor::completed)
-          .toArray(CompletableFuture<?>[]::new);
+        .map(policy -> policy.completed().thenRun(() ->
+          System.out.println("Finished running policy: " + policy.getPolicyName() + " (" + policy.stats().stopwatch() + ")")
+        ))
+        .toArray(CompletableFuture[]::new);
+
       CompletableFuture.allOf(futures).join();
     }
   }
@@ -118,7 +123,9 @@ public final class Simulator {
     reporter.print(results);
   }
 
-  /** Returns a trace reader for the access events. */
+  /**
+   * Returns a trace reader for the access events.
+   */
   private static TraceReader getTraceReader(BasicSettings settings) {
     if (settings.trace().isSynthetic()) {
       return Synthetic.generate(settings.trace());
@@ -128,15 +135,19 @@ public final class Simulator {
     return format.readFiles(filePaths);
   }
 
-  /** Returns the policy actors that asynchronously apply the trace events. */
+  /**
+   * Returns the policy actors that asynchronously apply the trace events.
+   */
   private ImmutableList<PolicyActor> getPolicyActors(Set<Characteristic> characteristics) {
     var registry = new Registry(settings, characteristics);
     return registry.policies().stream()
-        .map(policy -> new PolicyActor(Thread.currentThread(), policy, settings))
-        .collect(toImmutableList());
+      .map(policy -> new PolicyActor(Thread.currentThread(), policy, settings))
+      .collect(toImmutableList());
   }
 
-  /** Throws the underlying cause for the simulation failure. */
+  /**
+   * Throws the underlying cause for the simulation failure.
+   */
   private static void throwError(RuntimeException error, Iterable<PolicyActor> policies) {
     if (!Thread.currentThread().isInterrupted()) {
       throw error;

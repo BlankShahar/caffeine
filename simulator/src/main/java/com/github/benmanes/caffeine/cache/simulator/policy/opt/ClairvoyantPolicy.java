@@ -15,16 +15,13 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.opt;
 
-import java.util.ArrayDeque;
-import java.util.Queue;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.typesafe.config.Config;
-
+import it.unimi.dsi.fastutil.doubles.DoubleArrayFIFOQueue;
 import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;
 import it.unimi.dsi.fastutil.ints.IntPriorityQueue;
 import it.unimi.dsi.fastutil.ints.IntRBTreeSet;
@@ -32,6 +29,9 @@ import it.unimi.dsi.fastutil.ints.IntSortedSet;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
+
+import java.util.ArrayDeque;
+import java.util.Queue;
 
 /**
  * {@literal Bélády's} optimal page replacement policy. The upper bound of the hit rate is estimated
@@ -63,7 +63,7 @@ public final class ClairvoyantPolicy implements Policy {
   @Override
   public void record(AccessEvent event) {
     if (recorder == null) {
-      recorder = event.isPenaltyAware() ? new EventRecorder() : new KeyOnlyRecorder();
+      recorder = new EventRecorder();
     }
 
     tick++;
@@ -87,8 +87,10 @@ public final class ClairvoyantPolicy implements Policy {
     policyStats.stopwatch().stop();
   }
 
-  /** Performs the cache operations for the given key. */
-  private void process(long key, double hitPenalty, double missPenalty) {
+  /**
+   * Performs the cache operations for the given key.
+   */
+  private void process(long key, double hitPenalty, double missPenalty, double retrievalDelay, long itemSize) {
     IntPriorityQueue times = accessTimes.get(key);
 
     int lastAccess = times.dequeueInt();
@@ -100,42 +102,61 @@ public final class ClairvoyantPolicy implements Policy {
     } else {
       data.add(times.firstInt());
     }
+
     if (found) {
       policyStats.recordHit();
       policyStats.recordHitPenalty(hitPenalty);
+
     } else {
       policyStats.recordMiss();
       policyStats.recordMissPenalty(missPenalty);
+
+      policyStats.addDelay(retrievalDelay);
+
       if (data.size() > maximumSize) {
         evict();
       }
     }
   }
 
-  /** Removes the entry whose next access is the farthest away into the future. */
+  /**
+   * Removes the entry whose next access is the farthest away into the future.
+   */
   private void evict() {
     data.remove(data.lastInt());
     policyStats.recordEviction();
   }
 
-  /** An optimized strategy for storing the event history. */
+  /**
+   * An optimized strategy for storing the event history.
+   */
   private interface Recorder {
     void add(AccessEvent event);
+
     void process();
   }
 
   private final class KeyOnlyRecorder implements Recorder {
     private final LongArrayFIFOQueue future;
+    private final DoubleArrayFIFOQueue futureRetrievalDelays;
+    private final IntArrayFIFOQueue futureItemSizes;
 
     KeyOnlyRecorder() {
       future = new LongArrayFIFOQueue(maximumSize);
+      futureRetrievalDelays = new DoubleArrayFIFOQueue(maximumSize);
+      futureItemSizes = new IntArrayFIFOQueue(maximumSize);
     }
-    @Override public void add(AccessEvent event) {
+
+    @Override
+    public void add(AccessEvent event) {
       future.enqueue(event.key());
+      futureRetrievalDelays.enqueue(event.retrievalDelay());
     }
-    @Override public void process() {
+
+    @Override
+    public void process() {
       while (!future.isEmpty()) {
-        ClairvoyantPolicy.this.process(future.dequeueLong(), 0.0, 0.0);
+        ClairvoyantPolicy.this.process(future.dequeueLong(), 0.0, 0.0, futureRetrievalDelays.dequeueDouble(), futureItemSizes.dequeueInt());
       }
     }
   }
@@ -146,13 +167,17 @@ public final class ClairvoyantPolicy implements Policy {
     EventRecorder() {
       future = new ArrayDeque<>(maximumSize);
     }
-    @Override public void add(AccessEvent event) {
+
+    @Override
+    public void add(AccessEvent event) {
       future.add(event);
     }
-    @Override public void process() {
+
+    @Override
+    public void process() {
       while (!future.isEmpty()) {
         AccessEvent event = future.poll();
-        ClairvoyantPolicy.this.process(event.key(), event.hitPenalty(), event.missPenalty());
+        ClairvoyantPolicy.this.process(event.key(), event.hitPenalty(), event.missPenalty(), event.retrievalDelay(), event.itemSize());
       }
     }
   }

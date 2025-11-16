@@ -42,7 +42,7 @@ public final class SimulatedAnnealingClimber extends AbstractClimber {
     var settings = new SimulatedAnnealingSettings(config);
     int maximumSize = Math.toIntExact(settings.maximumSize());
     this.initialStepSize = (int) (settings.percentPivot() * maximumSize);
-    this.sampleSize = (int) (settings.percentSample() * maximumSize);
+    this.sampleSize = (long) (settings.percentSample() * maximumSize);
     this.coolDownTolerance = 100 * settings.coolDownTolerance();
     this.restartTolerance = 100 * settings.restartTolerance();
     this.random = new Random(settings.randomSeed());

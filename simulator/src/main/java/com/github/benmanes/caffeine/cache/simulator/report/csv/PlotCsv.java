@@ -132,7 +132,7 @@ public final class PlotCsv implements Runnable {
       }
     }
     double margin = 0.1 * (upperBound - lowerBound);
-    return new Range(Math.max(0, lowerBound - margin), Math.min(100, upperBound + margin));
+    return new Range(Math.max(0, lowerBound - margin), upperBound + margin);
   }
 
   private void applyTheme(JFreeChart chart) {

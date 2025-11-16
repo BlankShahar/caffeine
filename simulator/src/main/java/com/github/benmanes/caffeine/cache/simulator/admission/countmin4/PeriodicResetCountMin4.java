@@ -31,7 +31,7 @@ public final class PeriodicResetCountMin4 extends CountMin4 {
   final Membership doorkeeper;
 
   int additions;
-  int period;
+  public int period;
 
   public PeriodicResetCountMin4(Config config) {
     super(config);
@@ -42,9 +42,9 @@ public final class PeriodicResetCountMin4 extends CountMin4 {
   }
 
   @Override
-  protected void ensureCapacity(long maximumSize) {
+  public void ensureCapacity(long maximumSize) {
     super.ensureCapacity(maximumSize);
-    period = (maximumSize == 0) ? 10 : (10 * table.length);
+    period = (maximumSize == 0) ? 10 : (2 * table.size());
     if (period <= 0) {
       period = Integer.MAX_VALUE;
     }
@@ -82,9 +82,9 @@ public final class PeriodicResetCountMin4 extends CountMin4 {
     }
 
     @Var int count = 0;
-    for (int i = 0; i < table.length; i++) {
-      count += Long.bitCount(table[i] & ONE_MASK);
-      table[i] = (table[i] >>> 1) & RESET_MASK;
+    for (int i = 0; i < table.size(); i++) {
+      count += Long.bitCount(table.getOrDefault(i, 0L) & ONE_MASK);
+      table.put(i, (table.getOrDefault(i, 0L) >>> 1) & RESET_MASK);
     }
     additions = (additions - (count >>> 2)) >>> 1;
     doorkeeper.clear();

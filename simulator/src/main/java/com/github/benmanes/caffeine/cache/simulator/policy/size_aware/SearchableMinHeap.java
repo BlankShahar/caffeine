@@ -1,0 +1,373 @@
+package com.github.benmanes.caffeine.cache.simulator.policy.size_aware;
+
+import com.github.benmanes.caffeine.cache.simulator.DebugHelpers.Assert;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import it.unimi.dsi.fastutil.Pair;
+import it.unimi.dsi.fastutil.objects.ObjectObjectImmutablePair;
+
+import javax.annotation.Nullable;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+
+/***
+ * A combination of a heap and a hash table that allows min() and get() in constant time,
+ * and allows an update of the position of an item within the heap in logarithmic time.
+ * Adapted from fastutil HeapPriorityQueue.
+ */
+
+@SuppressWarnings("unchecked")
+public class SearchableMinHeap<K, V> {
+  final private static float DEFAULT_LOAD_FACTOR = 1.5f;
+  protected List<K> heap;
+  protected Map<K, V> valuesMap;
+  protected Map<K, Integer> idxMap;
+  protected int size;
+  protected int maxSize;
+  protected Comparator<? super K> c;
+
+  final private static boolean DEBUG = false;
+
+  public SearchableMinHeap(int maximalCapacity, Comparator<? super K> c) {
+    this.c = c;
+    this.heap = new ArrayList<>();
+    this.valuesMap = new HashMap<>();
+    this.idxMap = new HashMap<>();
+    this.size = 0;
+    this.maxSize = 0;
+  }
+
+  public SearchableMinHeap(SearchableMinHeap<K, V> other) {
+    this.c = other.c;
+    int maximalCapacity = other.heap.size();
+    this.heap = new ArrayList<>(maximalCapacity);
+
+    this.valuesMap = new HashMap<>(maximalCapacity, DEFAULT_LOAD_FACTOR);
+    this.idxMap = new HashMap<>(maximalCapacity, DEFAULT_LOAD_FACTOR);
+
+    int numItemsToMove = Math.min(maximalCapacity, other.size);
+    for (int i = 0; i < numItemsToMove; ++i) {
+      K key = other.heap.get(i);
+      V value = other.get(key);
+
+      this.heap.add(key);
+      this.valuesMap.put(key, value);
+      this.idxMap.put(key, i);
+    }
+
+    this.size = other.size;
+    this.maxSize = other.maxSize;
+
+    makeHeap();
+  }
+
+  public boolean isEmpty() {
+    return size == 0;
+  }
+
+  public void copyInto(SearchableMinHeap<K, V> other) {
+    Assert.assertCondition(this.heap.size() == other.heap.size(),
+      () -> String.format("copy fail: heap sizes mismatch, src: %d vs dst: %d",
+        this.heap.size(),
+        other.heap.size()));
+    other.c = this.c;
+    int maximalCapacity = this.heap.size();
+
+    int numItemsToMove = Math.min(maximalCapacity, this.size);
+    for (int i = 0; i < numItemsToMove; ++i) {
+      K key = this.heap.get(i);
+      V value = this.get(key);
+
+      if (i < other.heap.size()) {
+        other.heap.set(i, key);
+      } else {
+        other.heap.add(key);
+      }
+      other.valuesMap.put(key, value);
+      other.idxMap.put(key, i);
+    }
+
+    other.size = this.size;
+    other.maxSize = this.maxSize;
+
+    other.makeHeap();
+  }
+
+  public void increaseSize(int amount, @Nullable List<Pair<K, V>> items) {
+    Assert.assertCondition(amount > 0, "Cannot increase by non-positive number " + amount);
+    Assert.assertCondition((items != null && amount >= items.size()),
+      () -> String.format("Too many items offered: %d when increasing by: %d",
+        items.size(),
+        amount));
+    this.maxSize += amount;
+
+    int i = size;
+    if (items != null) {
+      for (Pair<K, V> itemPair : items) {
+        K key = itemPair.first();
+        if (i < heap.size()) {
+          heap.set(i, key);
+        } else {
+          heap.add(key);
+        }
+        valuesMap.put(key, itemPair.second());
+        idxMap.put(key, i);
+        ++i;
+      }
+    }
+    this.size += items.size();
+
+    makeHeap();
+    final int idx = i; // for lambda capture
+    Assert.assertCondition((this.size == idx),
+      () -> String.format("Size mismatch; expected = %d, actual = %d", size, idx));
+    Assert.assertCondition(this.valuesMap.size() == size,
+      () -> String.format("Class and map sizes mismatch; Class size: %d, Map size: %d",
+        size,
+        this.valuesMap.size()));
+  }
+
+  public List<Pair<K, V>> decreaseSize(int amount) {
+    Assert.assertCondition(amount > 0, "Cannot decrease by non-positive number " + amount);
+    int numOfItemsToRemove = Math.min(amount, size);
+
+    List<Pair<K, V>> itemsRemoved = new ArrayList<>(numOfItemsToRemove);
+
+    for (int i = 0; i < numOfItemsToRemove; ++i) {
+      Pair<K, V> item = extractMin();
+      itemsRemoved.add(item);
+    }
+
+    this.maxSize -= amount;
+    validate();
+
+    return itemsRemoved;
+  }
+
+  public void insert(K k, V v) {
+    Assert.assertCondition(this.size <= this.heap.size(), "Insertion into full heap");
+    Assert.assertCondition(!this.idxMap.containsKey(k), "Inserting duplicate item");
+    if (size < heap.size()) {
+      heap.set(this.size, k);
+    } else {
+      heap.add(k);
+    }
+    this.size++;
+    this.valuesMap.put(k, v);
+    upHeap(this.size - 1);
+  }
+
+  @CanIgnoreReturnValue
+  public V remove(K k) {
+    int idx = this.idxMap.get(k);
+    V value = this.valuesMap.get(k);
+
+    heap.set(idx, heap.get(--this.size));
+    if (idx < size) {
+      downHeap(idx);
+      upHeap(idx);
+    }
+
+    this.idxMap.remove(k);
+    this.valuesMap.remove(k);
+
+    return value;
+  }
+
+  public Pair<K, V> extractMin() {
+    Assert.assertCondition(this.size > 0, "Cannot extract from empty heap");
+
+    K resultKey = this.heap.get(0);
+    V resultValue = this.valuesMap.get(resultKey);
+
+    K replacement = this.heap.get(--this.size);
+    heap.set(0, replacement);
+
+    if (this.size > 0) {
+      this.idxMap.put(replacement, 0);
+    }
+
+    if (this.size != 0) {
+      downHeap(0);
+    }
+
+    final V valuesRes = this.valuesMap.remove(resultKey);
+    final Integer idxRes = this.idxMap.remove(resultKey);
+
+    Assert.assertCondition(valuesRes != null, "Got null at values");
+    Assert.assertCondition(idxRes != null, "Got null at indexes");
+
+    return new ObjectObjectImmutablePair<>(resultKey, resultValue);
+  }
+
+  public Pair<K, V> min() {
+    if (this.size == 0) {
+      throw new NoSuchElementException();
+    } else {
+      K key = this.heap.get(0);
+      V value = this.valuesMap.get(key);
+      return new ObjectObjectImmutablePair<>(key, value);
+    }
+  }
+
+  public boolean contains(K key) {
+    return this.valuesMap.containsKey(key);
+  }
+
+  public @Nullable V get(K key) {
+    return this.valuesMap.get(key);
+  }
+
+  public void upsert(K k, V v) {
+    if (this.contains(k)) {
+      this.valuesMap.put(k, v);
+      int i = getIndex(k);
+      downHeap(i);
+      upHeap(i);
+    } else
+      this.insert(k, v);
+  }
+
+  public int getIndex(K key) {
+    return this.idxMap.get(key);
+  }
+
+  public int size() {
+    return this.size;
+  }
+
+  public void clear() {
+    this.heap.clear();
+    this.valuesMap.clear();
+    this.idxMap.clear();
+    this.size = 0;
+  }
+
+  @CanIgnoreReturnValue
+  public int downHeap(int i) {
+    final int originIdx = i;
+    Assert.assertCondition(i < size && i >= 0, () -> String.format("Invalid index: %d in size %d", originIdx, size));
+
+    K targetItem = heap.get(i);
+    K minimalChild;
+    int leftChildIdx = (i << 1) + 1;
+    int rightChildIdx = leftChildIdx + 1;
+    int minimalChildIdx;
+    boolean isWellPositioned = false;
+
+    while (leftChildIdx < size && !isWellPositioned) {
+      if (rightChildIdx < size && c.compare(heap.get(rightChildIdx), heap.get(leftChildIdx)) < 0) {
+        minimalChildIdx = rightChildIdx;
+        minimalChild = heap.get(rightChildIdx);
+      } else {
+        minimalChildIdx = leftChildIdx;
+        minimalChild = heap.get(leftChildIdx);
+      }
+
+      isWellPositioned = c.compare(targetItem, minimalChild) <= 0;
+
+      if (!isWellPositioned) {
+        this.idxMap.put(minimalChild, i);
+        heap.set(i, minimalChild);
+        i = minimalChildIdx;
+      }
+
+      leftChildIdx = (minimalChildIdx << 1) + 1;
+      rightChildIdx = leftChildIdx + 1;
+    }
+
+    this.idxMap.put(targetItem, i);
+    heap.set(i, targetItem);
+
+    return i;
+  }
+
+  @CanIgnoreReturnValue
+  public int upHeap(int i) {
+    final int originIdx = i;
+    Assert.assertCondition(i < size && i >= 0, () -> String.format("Invalid index: %d in size %d", originIdx, size));
+
+    K target = heap.get(i);
+    int parentIdx;
+    K parentKey;
+    boolean isWellPositioned = false;
+
+    while (i != 0 && !isWellPositioned) {
+      parentIdx = (i - 1) >>> 1;
+      parentKey = heap.get(parentIdx);
+      isWellPositioned = c.compare(parentKey, target) <= 0;
+
+      if (!isWellPositioned) {
+        this.idxMap.put(parentKey, i);
+        heap.set(i, parentKey);
+        i = parentIdx;
+      }
+    }
+
+    this.idxMap.put(target, i);
+    heap.set(i, target);
+
+    return i;
+  }
+
+  public void makeHeap() {
+    int i = size >>> 1;
+
+    while (i-- != 0) {
+      downHeap(i);
+    }
+
+    validate();
+  }
+
+  public void validate() {
+    for (int i = 0; i < size; ++i) {
+      final K key = heap.get(i);
+      final int idx = i;
+      Assert.assertCondition(key != null, "Null value found");
+      Assert.assertCondition(this.valuesMap.containsKey(key), () -> String.format("No value stored for the key: %s at index: %d", key, idx));
+      Assert.assertCondition(this.idxMap.containsKey(key), () -> String.format("No index stored for the key: %s at index: %d", key, idx));
+      final int expectedIdx = i;
+      final int storedIdx = this.idxMap.get(key);
+      Assert.assertCondition(storedIdx == i, () -> String.format("Wrong index stored for the key: %s, expected: %d, got: %d", key, expectedIdx, this.idxMap.get(key)));
+    }
+  }
+
+  private PrintWriter prepareFileWriter() {
+    LocalDateTime currentTime = LocalDateTime.now(ZoneId.systemDefault());
+    DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("dd-MM-HH-mm-ss");
+    PrintWriter writer = null;
+    try {
+      FileWriter fwriter = new FileWriter("/tmp/searchable-heap-dump-" + currentTime.format(timeFormatter) + ".dump", StandardCharsets.UTF_8);
+      writer = new PrintWriter(fwriter);
+    } catch (IOException e) {
+      System.err.println("Error creating the log file handler");
+      e.printStackTrace();
+      System.exit(1);
+    }
+
+    return writer;
+  }
+
+  public void dump() {
+    if (DEBUG) {
+      PrintWriter writer = prepareFileWriter();
+
+      for (int idx = 0; idx < size; ++idx) {
+        K key = heap.get(idx);
+        writer.printf("%s%n", key.toString());
+      }
+
+      writer.close();
+    }
+  }
+
+  public void setSize(int size) {
+    this.maxSize = size;
+  }
+}
