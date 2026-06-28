@@ -22,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Semaphore;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
+import com.github.benmanes.caffeine.cache.simulator.policy.Policy.TraceAwarePolicy;
 import com.google.common.collect.ImmutableList;
 
 /**
@@ -55,6 +56,31 @@ public final class PolicyActor {
   /** Sends the access events for async processing and blocks until accepted into the mailbox. */
   public void send(ImmutableList<AccessEvent> events) {
     submit(new Execute(events));
+  }
+
+  /** Synchronously prepares a trace-aware policy before the simulation starts. */
+  public void prepare(AccessEvent event) {
+    if (isTraceAware()) {
+      ((TraceAwarePolicy) policy).prepare(event);
+    }
+  }
+
+  /** Synchronously notifies a trace-aware policy that preparation completed. */
+  public void prepareFinished() {
+    if (isTraceAware()) {
+      ((TraceAwarePolicy) policy).prepareFinished();
+    }
+  }
+
+  /** Returns whether the policy asks to inspect the trace before replay. */
+  public boolean isTraceAware() {
+    return (policy instanceof TraceAwarePolicy)
+        && ((TraceAwarePolicy) policy).needsTracePreparation();
+  }
+
+  /** Sends a warmup-complete signal after the pending warmup events are completed. */
+  public void warmupFinished() {
+    submit(new WarmupFinished());
   }
 
   /** Sends a shutdown signal after the pending messages are completed. */
@@ -108,6 +134,13 @@ public final class PolicyActor {
         }
       }
       policy.stats().stopwatch().stop();
+    }
+  }
+
+  /** A command to end warmup and reset measured statistics while preserving policy state. */
+  private final class WarmupFinished extends Command {
+    @Override public void execute() {
+      policy.warmupFinished();
     }
   }
 

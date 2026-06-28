@@ -77,6 +77,7 @@ public final class Simulator {
     }
 
     try {
+      prepare(trace, policies);
       broadcast(trace, policies);
       report(trace, policies);
     } catch (RuntimeException e) {
@@ -84,26 +85,56 @@ public final class Simulator {
     }
   }
 
+  private void prepare(TraceReader trace, List<PolicyActor> policies) {
+    boolean needsPreparation = policies.stream().anyMatch(PolicyActor::isTraceAware);
+    if (!needsPreparation) {
+      return;
+    }
+    long skip = settings.trace().skip();
+    long limit = settings.trace().limit();
+    try (Stream<AccessEvent> events = trace.events().skip(skip).limit(limit)) {
+      events.forEach(event -> {
+        for (var policy : policies) {
+          policy.prepare(event);
+        }
+      });
+    }
+    for (var policy : policies) {
+      policy.prepareFinished();
+    }
+  }
+
   private void broadcast(TraceReader trace, List<PolicyActor> policies) {
     long skip = settings.trace().skip();
     long limit = settings.trace().limit();
+    long warmupEvents = settings.trace().warmupEvents();
     int batchSize = settings.actor().batchSize();
     try (Stream<AccessEvent> events = trace.events().skip(skip).limit(limit)) {
       var batch = new ArrayList<AccessEvent>(batchSize);
+      long[] seen = { 0L };
+      boolean[] warmupFinished = { warmupEvents == 0L };
       events.forEach(event -> {
-        batch.add(event);
-        if (batch.size() == batchSize) {
-          var accessEvents = ImmutableList.copyOf(batch);
+        if (!warmupFinished[0] && (seen[0] == warmupEvents)) {
+          sendBatch(batch, policies);
           for (var policy : policies) {
-            policy.send(accessEvents);
+            policy.warmupFinished();
           }
-          batch.clear();
+          warmupFinished[0] = true;
+        }
+        batch.add(event);
+        seen[0]++;
+        if (batch.size() == batchSize) {
+          sendBatch(batch, policies);
         }
       });
 
-      var remainder = ImmutableList.copyOf(batch);
+      sendBatch(batch, policies);
+      if (!warmupFinished[0]) {
+        for (var policy : policies) {
+          policy.warmupFinished();
+        }
+      }
       for (var policy : policies) {
-        policy.send(remainder);
         policy.finish();
       }
 
@@ -115,6 +146,17 @@ public final class Simulator {
 
       CompletableFuture.allOf(futures).join();
     }
+  }
+
+  private static void sendBatch(List<AccessEvent> batch, List<PolicyActor> policies) {
+    if (batch.isEmpty()) {
+      return;
+    }
+    var accessEvents = ImmutableList.copyOf(batch);
+    for (var policy : policies) {
+      policy.send(accessEvents);
+    }
+    batch.clear();
   }
 
   private void report(TraceReader trace, List<PolicyActor> policies) {

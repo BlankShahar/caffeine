@@ -33,6 +33,11 @@ public interface Policy {
   /** Records that the entry was accessed. */
   void record(AccessEvent event);
 
+  /** Indicates that the warmup phase has completed. */
+  default void warmupFinished() {
+    stats().reset();
+  }
+
   /** Indicates that the recording has completed. */
   default void finished() {}
 
@@ -65,6 +70,15 @@ public interface Policy {
 
     /** The event features that this policy supports. */
     Characteristic[] characteristics() default {};
+  }
+
+  /** A policy that needs to inspect the trace before the simulation starts. */
+  interface TraceAwarePolicy extends Policy {
+    default boolean needsTracePreparation() {
+      return true;
+    }
+    default void prepare(AccessEvent event) {}
+    default void prepareFinished() {}
   }
 
   /** A policy that does not exploit external event metadata. */

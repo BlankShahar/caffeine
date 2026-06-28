@@ -235,6 +235,25 @@ public class BasicSettings {
     public long limit() {
       return config().getIsNull("trace.limit") ? Long.MAX_VALUE : getFormattedLong("trace.limit");
     }
+    public double warmupPercent() {
+      return config().getDouble("trace.warmup-percent");
+    }
+    public long warmupEvents() {
+      long explicit = getFormattedLong("trace.warmup-events");
+      if (explicit > 0) {
+        return explicit;
+      }
+      double percent = warmupPercent();
+      if (percent <= 0.0) {
+        return 0L;
+      }
+      long limit = limit();
+      checkState(limit != Long.MAX_VALUE,
+          "trace.warmup-percent requires trace.limit, or set trace.warmup-events explicitly");
+      checkState(percent >= 0.0 && percent < 1.0,
+          "trace.warmup-percent must be in [0, 1), was %s", percent);
+      return (long) Math.floor(limit * percent);
+    }
     public boolean isFiles() {
       return config().getString("trace.source").equals("files");
     }

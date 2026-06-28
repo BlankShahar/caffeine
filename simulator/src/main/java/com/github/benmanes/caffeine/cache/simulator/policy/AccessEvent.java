@@ -21,7 +21,6 @@ import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
-
 /**
  * The key and metadata for accessing a cache.
  *
@@ -97,6 +96,20 @@ public class AccessEvent {
   }
 
   /**
+   * Returns the trace timestamp, in milliseconds, or -1 if not supplied.
+   */
+  public long timestamp() {
+    return -1L;
+  }
+
+  /**
+   * Returns the request arrival rate for this item, in requests/sec, or 0 if not supplied.
+   */
+  public double lambda() {
+    return 0.0;
+  }
+
+  /**
    * Returns the operation type of the entry.
    * <p>
    * The operation is a hint for the policy to determine the type of access,
@@ -121,12 +134,15 @@ public class AccessEvent {
       && (hitPenalty() == event.hitPenalty())
       && (missPenalty() == event.missPenalty())
       && (retrievalDelay() == event.retrievalDelay())
-      && (itemSize() == event.itemSize());
+      && (itemSize() == event.itemSize())
+      && (timestamp() == event.timestamp())
+      && (lambda() == event.lambda());
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(key(), weight(), missPenalty(), hitPenalty());
+    return Objects.hash(key(), weight(), missPenalty(), hitPenalty(), itemSize(),
+      retrievalDelay(), timestamp(), lambda());
   }
 
   @Override
@@ -138,6 +154,8 @@ public class AccessEvent {
       .add("miss penalty", missPenalty())
       .add("retrieval delay", retrievalDelay())
       .add("item size", itemSize())
+      .add("timestamp", timestamp())
+      .add("lambda", lambda())
       .toString();
   }
 
@@ -160,8 +178,25 @@ public class AccessEvent {
    * Operation is a hint for the policy to determine the type of access,
    * such as read(0), write(1) or delete(2).
    */
-  public static AccessEvent forKeyAndOperationAndSizeAndDelay(long key, int operation, long itemSize, double underflowDelay) {
-    return new DelayAccessEvent(key, operation, itemSize, underflowDelay);
+  public static AccessEvent forKeyAndOperationAndSizeAndDelay(
+    long key, int operation, long itemSize, double underflowDelay) {
+    return new DelayAccessEvent(key, operation, itemSize, underflowDelay, -1L, 0.0);
+  }
+
+  /**
+   * Returns an event for the given key, operation, size, delay and timestamp.
+   */
+  public static AccessEvent forKeyAndOperationAndSizeAndDelayAndTimestamp(
+    long key, int operation, long itemSize, double underflowDelay, long timestamp) {
+    return new DelayAccessEvent(key, operation, itemSize, underflowDelay, timestamp, 0.0);
+  }
+
+  /**
+   * Returns an event for the given key, operation, size, delay, timestamp and lambda.
+   */
+  public static AccessEvent forKeyAndOperationAndSizeAndDelayAndTimestampAndLambda(
+    long key, int operation, long itemSize, double underflowDelay, long timestamp, double lambda) {
+    return new DelayAccessEvent(key, operation, itemSize, underflowDelay, timestamp, lambda);
   }
 
   /**
@@ -215,21 +250,38 @@ public class AccessEvent {
   }
 
   public static final class DelayAccessEvent extends AccessEvent {
-    private final int operation;
     private final double underflowDelay;
+    private final double lambda;
+    private final int operation;
+    private final long timestamp;
 
-    DelayAccessEvent(long key, int operation, long itemSize, double underflowDelay) {
+    DelayAccessEvent(long key, int operation, long itemSize, double underflowDelay,
+                     long timestamp, double lambda) {
       super(key, itemSize);
       this.operation = operation;
       this.underflowDelay = underflowDelay;
+      this.timestamp = timestamp;
+      this.lambda = lambda;
       checkArgument(itemSize >= 0);
       checkArgument(operation >= 0 && operation <= 2);
       checkArgument(underflowDelay >= 0);
+      checkArgument(timestamp == -1 || timestamp >= 0);
+      checkArgument(lambda >= 0);
     }
 
     @Override
     public double retrievalDelay() {
       return underflowDelay;
+    }
+
+    @Override
+    public long timestamp() {
+      return timestamp;
+    }
+
+    @Override
+    public double lambda() {
+      return lambda;
     }
 
     @Override

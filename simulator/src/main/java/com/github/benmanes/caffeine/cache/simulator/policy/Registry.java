@@ -29,6 +29,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.linked.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.UnboundedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.cluster_based.*;
+import com.github.benmanes.caffeine.cache.simulator.policy.prefix.competitor.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.item_based.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.prefix.source_based.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.*;
@@ -235,6 +236,13 @@ public final class Registry {
     registerPrefixSourceBased();
     registerPrefixItemBased();
     registerPrefixClusterBased();
+    registerPrefixCompetitors();
+  }
+
+  private void registerPrefixCompetitors() {
+    register(SegmentBasedPolicy.class, SegmentBasedPolicy::new);
+    register(SBatchOraclePolicy.class, SBatchOraclePolicy::new);
+    register(SBatchMonitoredPolicy.class, SBatchMonitoredPolicy::new);
   }
 
   private void registerPrefixSourceBased() {

@@ -39,13 +39,44 @@ public final class PrefixTraceReader extends TextTraceReader {
   @Override
   public Stream<AccessEvent> events() {
     return lines()
-      .map(line -> line.split(",", 4))
-      .map(array -> {
-        long key = Long.parseLong(array[0]);
-        int operation = Integer.parseInt(array[1]);
-        long itemSize = Long.parseLong(array[2]);
-        double underflowDelay = Double.parseDouble(array[3]);
-        return AccessEvent.forKeyAndOperationAndSizeAndDelay(key, operation, itemSize, underflowDelay);
-      });
+      .filter(line -> !line.isBlank())
+      .filter(line -> !line.startsWith("#"))
+      .map(line -> line.split(","))
+      .filter(array -> !isHeader(array))
+      .map(this::parse);
+  }
+
+  private boolean isHeader(String[] array) {
+    return (array.length > 0) && array[0].trim().equalsIgnoreCase("timestamp");
+  }
+
+  private AccessEvent parse(String[] array) {
+    if (array.length == 4) {
+      long key = Long.parseLong(array[0].trim());
+      int operation = Integer.parseInt(array[1].trim());
+      long itemSize = Long.parseLong(array[2].trim());
+      double retrievalDelay = Double.parseDouble(array[3].trim());
+      return AccessEvent.forKeyAndOperationAndSizeAndDelay(
+          key, operation, itemSize, retrievalDelay);
+    } else if (array.length == 5) {
+      long timestamp = Long.parseLong(array[0].trim());
+      long key = Long.parseLong(array[1].trim());
+      int operation = Integer.parseInt(array[2].trim());
+      long itemSize = Long.parseLong(array[3].trim());
+      double retrievalDelay = Double.parseDouble(array[4].trim());
+      return AccessEvent.forKeyAndOperationAndSizeAndDelayAndTimestamp(
+          key, operation, itemSize, retrievalDelay, timestamp);
+    } else if (array.length == 6) {
+      long timestamp = Long.parseLong(array[0].trim());
+      long key = Long.parseLong(array[1].trim());
+      int operation = Integer.parseInt(array[2].trim());
+      long itemSize = Long.parseLong(array[3].trim());
+      double retrievalDelay = Double.parseDouble(array[4].trim());
+      double lambda = Double.parseDouble(array[5].trim());
+      return AccessEvent.forKeyAndOperationAndSizeAndDelayAndTimestampAndLambda(
+          key, operation, itemSize, retrievalDelay, timestamp, lambda);
+    }
+    throw new IllegalArgumentException("Invalid prefix trace row; expected 4, 5, or 6 columns but got "
+        + array.length);
   }
 }

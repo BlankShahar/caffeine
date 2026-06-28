@@ -105,6 +105,28 @@ public class PolicyStats {
     addMetric("Total Latency", this::totalLatency);
   }
 
+
+  /** Resets the measured statistics while preserving custom metric registrations. */
+  public void reset() {
+    hitCount = 0L;
+    missCount = 0L;
+    hitsWeight = 0L;
+    missesWeight = 0L;
+    hitPenalty = 0.0;
+    missPenalty = 0.0;
+    evictionCount = 0L;
+    admittedCount = 0L;
+    rejectedCount = 0L;
+    operationCount = 0L;
+    percentAdaption = 0.0;
+    totalDelay = 0.0;
+    totalLatency = 0.0;
+    if (stopwatch.isRunning()) {
+      stopwatch.stop();
+    }
+    stopwatch.reset();
+  }
+
   public Map<String, Metric> metrics() {
     return metrics;
   }
