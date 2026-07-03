@@ -101,8 +101,17 @@ public class PolicyStats {
     addMetric("Average Penalty", this::avergePenalty);
     addMetric("Steps", this::operationCount);
     addMetric("Time", this::stopwatch);
-    addMetric("Total Delay", this::totalDelay);
-    addMetric("Total Latency", this::totalLatency);
+
+    addMetric(Metric.builder()
+      .name("Total Delay")
+      .addValue(this::totalDelay)
+      .type(NUMBER)
+      .required(true));
+    addMetric(Metric.builder()
+      .name("Total Latency")
+      .addValue(this::totalLatency)
+      .type(NUMBER)
+      .required(true));
   }
 
 
