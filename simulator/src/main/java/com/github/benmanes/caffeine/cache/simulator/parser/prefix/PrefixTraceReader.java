@@ -23,13 +23,11 @@ import com.google.common.collect.ImmutableSet;
 import java.util.Set;
 import java.util.stream.Stream;
 
-
 public final class PrefixTraceReader extends TextTraceReader {
 
   public PrefixTraceReader(String filePath) {
     super(filePath);
   }
-
 
   @Override
   public Set<Characteristic> characteristics() {
@@ -47,7 +45,11 @@ public final class PrefixTraceReader extends TextTraceReader {
   }
 
   private boolean isHeader(String[] array) {
-    return (array.length > 0) && array[0].trim().equalsIgnoreCase("timestamp");
+    if (array.length == 0) {
+      return false;
+    }
+    var first = array[0].trim().toLowerCase();
+    return first.equals("item_id") || first.equals("timestamp");
   }
 
   private AccessEvent parse(String[] array) {
@@ -56,27 +58,39 @@ public final class PrefixTraceReader extends TextTraceReader {
       int operation = Integer.parseInt(array[1].trim());
       long itemSize = Long.parseLong(array[2].trim());
       double retrievalDelay = Double.parseDouble(array[3].trim());
+
       return AccessEvent.forKeyAndOperationAndSizeAndDelay(
-          key, operation, itemSize, retrievalDelay);
-    } else if (array.length == 5) {
-      long timestamp = Long.parseLong(array[0].trim());
-      long key = Long.parseLong(array[1].trim());
-      int operation = Integer.parseInt(array[2].trim());
-      long itemSize = Long.parseLong(array[3].trim());
-      double retrievalDelay = Double.parseDouble(array[4].trim());
-      return AccessEvent.forKeyAndOperationAndSizeAndDelayAndTimestamp(
-          key, operation, itemSize, retrievalDelay, timestamp);
-    } else if (array.length == 6) {
-      long timestamp = Long.parseLong(array[0].trim());
-      long key = Long.parseLong(array[1].trim());
-      int operation = Integer.parseInt(array[2].trim());
-      long itemSize = Long.parseLong(array[3].trim());
-      double retrievalDelay = Double.parseDouble(array[4].trim());
-      double lambda = Double.parseDouble(array[5].trim());
-      return AccessEvent.forKeyAndOperationAndSizeAndDelayAndTimestampAndLambda(
-          key, operation, itemSize, retrievalDelay, timestamp, lambda);
+        key, operation, itemSize, retrievalDelay);
     }
-    throw new IllegalArgumentException("Invalid prefix trace row; expected 4, 5, or 6 columns but got "
-        + array.length);
+
+    if (array.length == 5) {
+      long key = Long.parseLong(array[0].trim());
+      int operation = Integer.parseInt(array[1].trim());
+      long itemSize = Long.parseLong(array[2].trim());
+      double retrievalDelay = Double.parseDouble(array[3].trim());
+      long timestamp = parseTimestamp(array[4]);
+
+      return AccessEvent.forKeyAndOperationAndSizeAndDelayAndTimestamp(
+        key, operation, itemSize, retrievalDelay, timestamp);
+    }
+
+    if (array.length == 6) {
+      long key = Long.parseLong(array[0].trim());
+      int operation = Integer.parseInt(array[1].trim());
+      long itemSize = Long.parseLong(array[2].trim());
+      double retrievalDelay = Double.parseDouble(array[3].trim());
+      long timestamp = parseTimestamp(array[4]);
+      double lambda = Double.parseDouble(array[5].trim());
+
+      return AccessEvent.forKeyAndOperationAndSizeAndDelayAndTimestampAndLambda(
+        key, operation, itemSize, retrievalDelay, timestamp, lambda);
+    }
+
+    throw new IllegalArgumentException(
+      "Invalid prefix trace row; expected 4, 5, or 6 columns but got " + array.length);
+  }
+
+  private static long parseTimestamp(String value) {
+    return (long) Double.parseDouble(value.trim());
   }
 }
