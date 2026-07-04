@@ -19,7 +19,7 @@ import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 /** Shared implementation for oracle and monitored SBatch baselines. */
-abstract class AbstractSBatchPolicy implements TraceAwarePolicy {
+abstract class AbstractGreedySBatchPolicy implements TraceAwarePolicy {
   enum Mode { ORACLE, MONITORED }
 
   private final Map<Long, ItemStats> itemStats;
@@ -38,7 +38,7 @@ abstract class AbstractSBatchPolicy implements TraceAwarePolicy {
   private long allocatedBytes;
   private long allocatedItems;
 
-  AbstractSBatchPolicy(Config config, Mode mode, String name) {
+  AbstractGreedySBatchPolicy(Config config, Mode mode, String name) {
     var settings = new BasicSettings(config);
     this.mode = mode;
     this.maximumSize = settings.maximumSize();

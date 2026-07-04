@@ -241,8 +241,10 @@ public final class Registry {
 
   private void registerPrefixCompetitors() {
     register(SegmentBasedPolicy.class, SegmentBasedPolicy::new);
-    register(SBatchOraclePolicy.class, SBatchOraclePolicy::new);
-    register(SBatchMonitoredPolicy.class, SBatchMonitoredPolicy::new);
+    register(GreedySBatchOraclePolicy.class, GreedySBatchOraclePolicy::new);
+    register(GreedySBatchMonitoredPolicy.class, GreedySBatchMonitoredPolicy::new);
+    register(DPSBatchOraclePolicy.class, DPSBatchOraclePolicy::new);
+    register(DPSBatchMonitoredPolicy.class, DPSBatchMonitoredPolicy::new);
   }
 
   private void registerPrefixSourceBased() {
